@@ -1,0 +1,780 @@
+// SPDX-FileCopyrightText: 2020 FXTi <zjxiang1998@gmail.com>
+// SPDX-License-Identifier: LGPL-3.0-only
+
+#include <rz_util.h>
+#include "minunit.h"
+
+static bool test_rz_big_from_to_int(void) {
+	RzNumBig *a = rz_big_new();
+
+	mu_assert_eq(0, rz_big_to_int(a), "Failed rz_big_to_int");
+
+	rz_big_from_int(a, 0xffff);
+	mu_assert_eq(0xffff, rz_big_to_int(a), "Failed rz_big_from_int");
+
+	rz_big_from_int(a, -0x7fff);
+	mu_assert_eq(-0x7fff, rz_big_to_int(a), "Failed rz_big_from_int");
+
+	rz_big_free(a);
+	mu_end;
+}
+
+static bool test_rz_big_from_to_hexstr(void) {
+	RzNumBig *a = rz_big_new();
+	char *str;
+
+	rz_big_from_hexstr(a, "0xffff");
+	mu_assert_eq(0xffff, rz_big_to_int(a), "Failed rz_big_from_hexstr");
+
+	str = rz_big_to_hexstr(a);
+	mu_assert_streq_free(str, "0xffff", "Failed rz_big_to_hexstr");
+
+	rz_big_from_hexstr(a, "-0x7fff");
+	mu_assert_eq(-0x7fff, rz_big_to_int(a), "Failed rz_big_from_hexstr");
+
+	str = rz_big_to_hexstr(a);
+	mu_assert_streq_free(str, "-0x7fff", "Failed rz_big_to_hexstr");
+
+	rz_big_free(a);
+	mu_end;
+}
+
+static bool test_rz_big_to_decstr(void) {
+	RzNumBig *a = rz_big_new();
+	char *str;
+
+	// Trivial cases.
+	rz_big_from_int(a, 0);
+	str = rz_big_to_decstr(a);
+	mu_assert_streq_free(str, "0", "zero");
+
+	rz_big_from_int(a, 42);
+	str = rz_big_to_decstr(a);
+	mu_assert_streq_free(str, "42", "small positive");
+
+	rz_big_from_int(a, -42);
+	str = rz_big_to_decstr(a);
+	mu_assert_streq_free(str, "-42", "small negative");
+
+	// 2^64 = first value that does not fit in ut64.
+	rz_big_from_hexstr(a, "0x10000000000000000");
+	str = rz_big_to_decstr(a);
+	mu_assert_streq_free(str, "18446744073709551616", "2^64");
+
+	// Test interior zero chunks: 10^10 = 0x2540be400.
+	rz_big_from_hexstr(a, "0x2540be400");
+	str = rz_big_to_decstr(a);
+	mu_assert_streq_free(str, "10000000000", "10^10 interior chunk");
+
+	// 2^128 - 1, the largest 128-bit unsigned value.
+	rz_big_from_hexstr(a, "0xffffffffffffffffffffffffffffffff");
+	str = rz_big_to_decstr(a);
+	mu_assert_streq_free(str,
+		"340282366920938463463374607431768211455",
+		"2^128 - 1");
+
+	// Near the 4096-bit ceiling: 2^4095 is 1233 decimal digits. This
+	// is a regression test for the decstr chunk buffer, which was
+	// previously sized for a far smaller value and returned NULL for
+	// wide inputs.
+	{
+		RzNumBig *base = rz_big_new();
+		RzNumBig *exp = rz_big_new();
+		RzNumBig *res = rz_big_new();
+		rz_big_from_int(base, 2);
+		rz_big_from_int(exp, 4095);
+		rz_big_pow(res, base, exp);
+		str = rz_big_to_decstr(res);
+		mu_assert_notnull(str, "2^4095 decstr is not NULL");
+		mu_assert_eq((ut64)strlen(str), (ut64)1233,
+			"2^4095 has 1233 decimal digits");
+		// Spot-check the leading digits against the known value.
+		mu_assert_true(!strncmp(str, "52219444070657625334", 20),
+			"2^4095 leading digits");
+		free(str);
+		rz_big_free(base);
+		rz_big_free(exp);
+		rz_big_free(res);
+	}
+
+	rz_big_free(a);
+	mu_end;
+}
+
+static bool test_rz_big_assign(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+
+	rz_big_from_int(a, 0xffff);
+	rz_big_assign(b, a);
+	mu_assert_eq(0xffff, rz_big_to_int(b), "Failed rz_big_assign");
+
+	rz_big_from_int(a, -0x7fff);
+	rz_big_assign(b, a);
+	mu_assert_eq(-0x7fff, rz_big_to_int(b), "Failed rz_big_assign");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	mu_end;
+}
+
+static bool test_rz_big_cmp(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+
+	rz_big_from_int(b, 0);
+	rz_big_from_int(a, 1);
+	mu_assert_eq(1, rz_big_cmp(a, b), "Failed rz_big_cmp");
+	mu_assert_eq(-1, rz_big_cmp(b, a), "Failed rz_big_cmp");
+	mu_assert_eq(0, rz_big_cmp(a, a), "Failed rz_big_cmp");
+	mu_assert_eq(0, rz_big_cmp(b, b), "Failed rz_big_cmp");
+
+	rz_big_from_hexstr(b, "0xffffffffffffffff");
+	mu_assert_eq(-1, rz_big_cmp(a, b), "Failed rz_big_cmp");
+	mu_assert_eq(1, rz_big_cmp(b, a), "Failed rz_big_cmp");
+	mu_assert_eq(0, rz_big_cmp(a, a), "Failed rz_big_cmp");
+	mu_assert_eq(0, rz_big_cmp(b, b), "Failed rz_big_cmp");
+
+	rz_big_from_int(b, 0);
+	rz_big_from_int(a, -1);
+	mu_assert_eq(-1, rz_big_cmp(a, b), "Failed rz_big_cmp");
+	mu_assert_eq(1, rz_big_cmp(b, a), "Failed rz_big_cmp");
+	mu_assert_eq(0, rz_big_cmp(a, a), "Failed rz_big_cmp");
+	mu_assert_eq(0, rz_big_cmp(b, b), "Failed rz_big_cmp");
+
+	rz_big_from_hexstr(b, "-0x7fffffffffffffff");
+	mu_assert_eq(1, rz_big_cmp(a, b), "Failed rz_big_cmp");
+	mu_assert_eq(-1, rz_big_cmp(b, a), "Failed rz_big_cmp");
+	mu_assert_eq(0, rz_big_cmp(a, a), "Failed rz_big_cmp");
+	mu_assert_eq(0, rz_big_cmp(b, b), "Failed rz_big_cmp");
+
+	rz_big_from_hexstr(a, "-0x7fffffffffffffff");
+	rz_big_from_hexstr(b, "0xffffffffffffffff");
+	mu_assert_eq(-1, rz_big_cmp(a, b), "Failed rz_big_cmp");
+	mu_assert_eq(1, rz_big_cmp(b, a), "Failed rz_big_cmp");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	mu_end;
+}
+
+static bool test_rz_big_add(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+	RzNumBig *c = rz_big_new();
+
+	rz_big_from_int(a, 1);
+	rz_big_from_int(b, -1);
+	rz_big_add(c, a, b);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_add");
+	rz_big_add(c, b, a);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_add");
+
+	rz_big_from_hexstr(a, "-0x7fffffffffffffff");
+	rz_big_from_hexstr(b, "0x7fffffffffffffff");
+	rz_big_add(c, a, b);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_add");
+	rz_big_add(c, b, a);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_add");
+
+	rz_big_from_hexstr(a, "-0x7fffffffffffffff");
+	rz_big_assign(b, a);
+	rz_big_add(c, a, b);
+	rz_big_from_hexstr(b, "-0xfffffffffffffffe");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_add");
+
+	rz_big_from_hexstr(a, "0xffffffffffffffff");
+	rz_big_assign(b, a);
+	rz_big_add(c, a, b);
+	rz_big_from_hexstr(b, "0x1fffffffffffffffe");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_add");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_sub(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+	RzNumBig *c = rz_big_new();
+
+	rz_big_from_int(a, 1);
+	rz_big_from_int(b, 1);
+	rz_big_sub(c, a, b);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_sub");
+	rz_big_sub(c, b, a);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_sub");
+
+	rz_big_from_int(a, 1);
+	rz_big_from_int(b, -1);
+	rz_big_sub(c, a, b);
+	mu_assert_eq(2, rz_big_to_int(c), "Failed rz_big_sub");
+	rz_big_sub(c, b, a);
+	mu_assert_eq(-2, rz_big_to_int(c), "Failed rz_big_sub");
+
+	rz_big_from_int(a, -1);
+	rz_big_from_int(b, -1);
+	rz_big_sub(c, a, b);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_sub");
+	rz_big_sub(c, b, a);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_sub");
+
+	rz_big_from_hexstr(a, "0x7fffffffffffffff");
+	rz_big_from_hexstr(b, "0x7fffffffffffffff");
+	rz_big_sub(c, a, b);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_sub");
+	rz_big_sub(c, b, a);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_sub");
+
+	rz_big_from_hexstr(a, "0x7fffffffffffffff");
+	rz_big_from_hexstr(b, "-0x7fffffffffffffff");
+	rz_big_sub(c, a, b);
+	rz_big_from_hexstr(b, "0xfffffffffffffffe");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_sub");
+	rz_big_from_hexstr(b, "-0x7fffffffffffffff");
+	rz_big_sub(c, b, a);
+	rz_big_from_hexstr(b, "-0xfffffffffffffffe");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_sub");
+
+	rz_big_from_hexstr(a, "-0x7fffffffffffffff");
+	rz_big_from_hexstr(b, "-0x7fffffffffffffff");
+	rz_big_sub(c, a, b);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_sub");
+	rz_big_sub(c, b, a);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_sub");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_mul(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+	RzNumBig *c = rz_big_new();
+
+	rz_big_from_int(a, 2);
+	rz_big_from_int(b, -2);
+	rz_big_mul(c, a, b);
+	mu_assert_eq(-4, rz_big_to_int(c), "Failed rz_big_mul");
+	rz_big_mul(c, b, a);
+	mu_assert_eq(-4, rz_big_to_int(c), "Failed rz_big_mul");
+
+	rz_big_from_int(a, 2);
+	rz_big_assign(b, a);
+	rz_big_mul(c, a, b);
+	mu_assert_eq(4, rz_big_to_int(c), "Failed rz_big_mul");
+	rz_big_mul(c, b, a);
+	mu_assert_eq(4, rz_big_to_int(c), "Failed rz_big_mul");
+
+	rz_big_from_int(a, -2);
+	rz_big_assign(b, a);
+	rz_big_mul(c, a, b);
+	mu_assert_eq(4, rz_big_to_int(c), "Failed rz_big_mul");
+	rz_big_mul(c, b, a);
+	mu_assert_eq(4, rz_big_to_int(c), "Failed rz_big_mul");
+
+	rz_big_from_hexstr(a, "0x7fffffffffffffff");
+	rz_big_from_hexstr(b, "-0x7fffffffffffffff");
+	rz_big_mul(c, a, b);
+	rz_big_from_hexstr(b, "-0x3fffffffffffffff0000000000000001");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_mul");
+	rz_big_from_hexstr(b, "-0x7fffffffffffffff");
+	rz_big_mul(c, b, a);
+	rz_big_from_hexstr(b, "-0x3fffffffffffffff0000000000000001");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_mul");
+
+	rz_big_from_hexstr(a, "0x7fffffffffffffff");
+	rz_big_from_hexstr(b, "0x7fffffffffffffff");
+	rz_big_mul(c, a, b);
+	rz_big_from_hexstr(b, "0x3fffffffffffffff0000000000000001");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_mul");
+	rz_big_from_hexstr(b, "0x7fffffffffffffff");
+	rz_big_mul(c, b, a);
+	rz_big_from_hexstr(b, "0x3fffffffffffffff0000000000000001");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_mul");
+
+	rz_big_from_hexstr(a, "-0x7fffffffffffffff");
+	rz_big_from_hexstr(b, "-0x7fffffffffffffff");
+	rz_big_mul(c, a, b);
+	rz_big_from_hexstr(b, "0x3fffffffffffffff0000000000000001");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_mul");
+	rz_big_from_hexstr(b, "-0x7fffffffffffffff");
+	rz_big_mul(c, b, a);
+	rz_big_from_hexstr(b, "0x3fffffffffffffff0000000000000001");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_mul");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_div(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+	RzNumBig *c = rz_big_new();
+
+	rz_big_from_int(a, 2);
+	rz_big_from_int(b, -2);
+	rz_big_div(c, a, b);
+	mu_assert_eq(-1, rz_big_to_int(c), "Failed rz_big_div");
+	rz_big_div(c, b, a);
+	mu_assert_eq(-1, rz_big_to_int(c), "Failed rz_big_div");
+
+	rz_big_from_int(a, 4);
+	rz_big_from_int(b, 2);
+	rz_big_div(c, a, b);
+	mu_assert_eq(2, rz_big_to_int(c), "Failed rz_big_div");
+	rz_big_div(c, b, a);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_div");
+
+	rz_big_from_int(a, -3);
+	rz_big_from_int(b, -2);
+	rz_big_div(c, a, b);
+	mu_assert_eq(1, rz_big_to_int(c), "Failed rz_big_div");
+	rz_big_div(c, b, a);
+	mu_assert_eq(0, rz_big_to_int(c), "Failed rz_big_div");
+
+	rz_big_from_hexstr(a, "0x7fffffffffffffff");
+	rz_big_from_int(b, 5);
+	rz_big_div(c, a, b);
+	rz_big_from_hexstr(b, "0x1999999999999999");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_div");
+
+	rz_big_from_hexstr(a, "0x8000000000000000");
+	rz_big_from_int(b, 0x8000);
+	rz_big_div(c, a, b);
+	rz_big_from_hexstr(b, "0x1000000000000");
+	mu_assert_eq(0, rz_big_cmp(c, b), "Failed rz_big_div");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_divmod(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+	RzNumBig *c = rz_big_new();
+	RzNumBig *d = rz_big_new();
+
+	rz_big_from_hexstr(a, "0x73204217f728a2fb7dc798618f23c5796675eee1ccd60a3a7be9cddf7d0eb30e9b004b0246051fcbc26ce99b67e23f07d3f2a493b1194af2777ffdfd5d66c61ba4fa2cd14536010ee00e695863039829c315c594c84170559822fcceb20afdc56a81ab7105e17efb0afd8f090bce2e5330e1c78e2e3ab26a1f49610b49b0fafa75b342b5c1a79322be4a92fac102958ed43aee787c221ea5c23e9485321c6b901cdb5c584bebcbea644a8f2c40bfbaf2dee40102e660e37d41b1f2ccee933a57693ee8ee2473bec98911ccd4b853704c7ed73b86da962845efe5399561fb3b0c37f5f0e730ddebcea7144351064f1ee04c1348125807a760186ac33316633d09");
+	rz_big_from_hexstr(b, "0x10001");
+	rz_big_divmod(c, d, a, b);
+	rz_big_from_hexstr(a, "0x731fcef828307acb02fc9564f9becbba9abb542678af918aea5ee380998e1980817fc9827c82a3491f23ca779d6aa19d3255723e3edb0c176b689294cad1fb49a9b08320c2153ef9a114c8439abffd69c5abffe8c858a7fcf0260ca8a5625863121e99526c8f126bf89196777556b8fc77e54fa8de91d3d84b71159a3416c6e3aecf93e62dc1656158e93a1186f10e9dc59d28db5346cb5ef6df9da59476d71945c2169635559694cdb5c1767f493ba9a33a5dc888985ae4e6cd0bffe29357c4117ad7734d0071c91748b58c02c76d8511522a34b06177e47800c194a0669aa59d505396dd470e87988caac45b8ac35588bdbf5498b30ead09bdb9755ced");
+	mu_assert_eq(0, rz_big_cmp(c, a), "Failed rz_big_divmod");
+	mu_assert_eq(57372, rz_big_to_int(d), "Failed rz_big_divmod");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	rz_big_free(c);
+	rz_big_free(d);
+	mu_end;
+}
+
+static bool test_rz_big_mod(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+	RzNumBig *c = rz_big_new();
+
+	rz_big_from_hexstr(a, "0x73204217f728a2fb7dc798618f23c5796675eee1ccd60a3a7be9cddf7d0eb30e9b004b0246051fcbc26ce99b67e23f07d3f2a493b1194af2777ffdfd5d66c61ba4fa2cd14536010ee00e695863039829c315c594c84170559822fcceb20afdc56a81ab7105e17efb0afd8f090bce2e5330e1c78e2e3ab26a1f49610b49b0fafa75b342b5c1a79322be4a92fac102958ed43aee787c221ea5c23e9485321c6b901cdb5c584bebcbea644a8f2c40bfbaf2dee40102e660e37d41b1f2ccee933a57693ee8ee2473bec98911ccd4b853704c7ed73b86da962845efe5399561fb3b0c37f5f0e730ddebcea7144351064f1ee04c1348125807a760186ac33316633d09");
+	rz_big_from_hexstr(b, "0x10001");
+	rz_big_mod(c, a, b);
+	mu_assert_eq(57372, rz_big_to_int(c), "Failed rz_big_mod");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_and(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+	RzNumBig *c = rz_big_new();
+
+	rz_big_from_hexstr(a, "0x73204217f728a2fb7dc798618f23c5796675eee1ccd60a3a7be9cddf7d0eb30e9b004b0246051fcbc26ce99b67e23f07d3f2a493b1194af2777ffdfd5d66c61ba4fa2cd14536010ee00e695863039829c315c594c84170559822fcceb20afdc56a81ab7105e17efb0afd8f090bce2e5330e1c78e2e3ab26a1f49610b49b0fafa75b342b5c1a79322be4a92fac102958ed43aee787c221ea5c23e9485321c6b901cdb5c584bebcbea644a8f2c40bfbaf2dee40102e660e37d41b1f2ccee933a57693ee8ee2473bec98911ccd4b853704c7ed73b86da962845efe5399561fb3b0c37f5f0e730ddebcea7144351064f1ee04c1348125807a760186ac33316633d09");
+	rz_big_from_hexstr(b, "0x8a1712798b2575df7ae8419ad4b43e0df66c4d2af6a327fc78ffe78b9a15dc2b9630167bfc6ca4f7958ba5073a31c0e06da3d7d0db3fac9a33546f3a62a3a2d20992da45141ed267e91e86308ab14ec027580eaa29719592b9e3a354f2135d87cebf6bfe9acf3b85deb9bb098804ce681a979b68a84594b08dd699afc7511f6790e61365f7de17df954b9a865ec840eca9cabf849b5df4d14adb31eabfb27b8f6144f18907026d41a61b59f72a5f689f8aeca79d0e5272cd2f7ba12620826fa36e3eb8d0b2c90dd76a7dda85dfd3ccad1193f50354e6e74fdbc62c1a765fe6515b2142ad1e16d9b0c914d7e345b2b40ef91f7f10b60806a850c1bccafdd080ac");
+	rz_big_and(c, a, b);
+	rz_big_from_hexstr(b, "0x2000211832020db78c000008420040966644c20c482023878e9c58b1804900a92000202440404c38008a1032220000041a284909119089233546d38402282120092084104160006e00e00100201080003100480084110109822a044b2025d854a812b7000c13a810ab98b0908040e4010818308280090200d40010b41101a6210a20225c1861302944a92824000008c800aae0018001481421a108032106b800040500803024940240a0924001f28928ae401000640624d0131a00420822a03683ea8c020410cc10811c8849853400c1093310250862045cbc42810605b2200132140a51014c980811443410402140048134810100006201040800214400008");
+	mu_assert_eq(0, rz_big_cmp(b, c), "Failed rz_big_and");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_or(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+	RzNumBig *c = rz_big_new();
+
+	rz_big_from_hexstr(a, "0x73204217f728a2fb7dc798618f23c5796675eee1ccd60a3a7be9cddf7d0eb30e9b004b0246051fcbc26ce99b67e23f07d3f2a493b1194af2777ffdfd5d66c61ba4fa2cd14536010ee00e695863039829c315c594c84170559822fcceb20afdc56a81ab7105e17efb0afd8f090bce2e5330e1c78e2e3ab26a1f49610b49b0fafa75b342b5c1a79322be4a92fac102958ed43aee787c221ea5c23e9485321c6b901cdb5c584bebcbea644a8f2c40bfbaf2dee40102e660e37d41b1f2ccee933a57693ee8ee2473bec98911ccd4b853704c7ed73b86da962845efe5399561fb3b0c37f5f0e730ddebcea7144351064f1ee04c1348125807a760186ac33316633d09");
+	rz_big_from_hexstr(b, "0x8a1712798b2575df7ae8419ad4b43e0df66c4d2af6a327fc78ffe78b9a15dc2b9630167bfc6ca4f7958ba5073a31c0e06da3d7d0db3fac9a33546f3a62a3a2d20992da45141ed267e91e86308ab14ec027580eaa29719592b9e3a354f2135d87cebf6bfe9acf3b85deb9bb098804ce681a979b68a84594b08dd699afc7511f6790e61365f7de17df954b9a865ec840eca9cabf849b5df4d14adb31eabfb27b8f6144f18907026d41a61b59f72a5f689f8aeca79d0e5272cd2f7ba12620826fa36e3eb8d0b2c90dd76a7dda85dfd3ccad1193f50354e6e74fdbc62c1a765fe6515b2142ad1e16d9b0c914d7e345b2b40ef91f7f10b60806a850c1bccafdd080ac");
+	rz_big_or(c, a, b);
+	rz_big_from_hexstr(b, "0xfb37527fff2df7ff7fefd9fbdfb7ff7df67defebfef72ffe7bffefdfff1fff2f9f305f7bfe6dbfffd7efed9f7ff3ffe7fff3f7d3fb3feefa777fffff7fe7e6dbadfafed5553ed36fe91eef78ebb3dee9e75dcfbee971f5d7b9e3ffdef21bfdc7eebfebff9fef7fffdefdbf098bceee7b3af7dfeeae7fb6fa9fdff9afcff1fffff5f753f5f7ff97ffbf4b9afedfcad5eefdfafffcff7ffef5caffb5efbfbe7b9f7ddffdd94febefebe65bdfff6afffaffdeeca79fee72f3fd6ffbf3eeee937ff76f3ef8feb6fbbfdfeb7dded5ffd3fced7fd7ff87def6ef4fffe73d9f77ffff5d7ff5f2ef3edffbfeef14d7f347ffbeeefd1f7f12fe0fa7e858ebfffbfff3bdad");
+	mu_assert_eq(0, rz_big_cmp(b, c), "Failed rz_big_or");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_xor(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+	RzNumBig *c = rz_big_new();
+
+	rz_big_from_hexstr(a, "0x73204217f728a2fb7dc798618f23c5796675eee1ccd60a3a7be9cddf7d0eb30e9b004b0246051fcbc26ce99b67e23f07d3f2a493b1194af2777ffdfd5d66c61ba4fa2cd14536010ee00e695863039829c315c594c84170559822fcceb20afdc56a81ab7105e17efb0afd8f090bce2e5330e1c78e2e3ab26a1f49610b49b0fafa75b342b5c1a79322be4a92fac102958ed43aee787c221ea5c23e9485321c6b901cdb5c584bebcbea644a8f2c40bfbaf2dee40102e660e37d41b1f2ccee933a57693ee8ee2473bec98911ccd4b853704c7ed73b86da962845efe5399561fb3b0c37f5f0e730ddebcea7144351064f1ee04c1348125807a760186ac33316633d09");
+	rz_big_from_hexstr(b, "0x8a1712798b2575df7ae8419ad4b43e0df66c4d2af6a327fc78ffe78b9a15dc2b9630167bfc6ca4f7958ba5073a31c0e06da3d7d0db3fac9a33546f3a62a3a2d20992da45141ed267e91e86308ab14ec027580eaa29719592b9e3a354f2135d87cebf6bfe9acf3b85deb9bb098804ce681a979b68a84594b08dd699afc7511f6790e61365f7de17df954b9a865ec840eca9cabf849b5df4d14adb31eabfb27b8f6144f18907026d41a61b59f72a5f689f8aeca79d0e5272cd2f7ba12620826fa36e3eb8d0b2c90dd76a7dda85dfd3ccad1193f50354e6e74fdbc62c1a765fe6515b2142ad1e16d9b0c914d7e345b2b40ef91f7f10b60806a850c1bccafdd080ac");
+	rz_big_xor(c, a, b);
+	rz_big_from_hexstr(b, "0xf937506e7c0dd724072fd9fb5b97fb749019a3cb3a752dc603162a54e71b6f250d305d79ba69bb3c57e74c9c5dd3ffe7be5173436a26e668442b92c73fc564c9ad68f6945128d3690910ef68e9b2d6e9e44dcb3ee130e5c721c15f9a4019a042a43ec08f9f2e457ed444340083cae03b2a765ce6867f26da929ff8a48ee1e59de55551d0367984fd2b01087c9fcad5627df051fce77fea7488e5a56f8dae101f7d9fadd14ce9a6abc251d6db6ae0d26d5408a69fe83291b06eca53eace1155f40700503e96bab31ee36c16516780bce16f44ce858e70cf0a3423158f17a4dd5d6cd4b24a2ecb327e6e0094b243fdaaeeb50c3702ee0fa1c848ab7ff9ebb3bda5");
+	mu_assert_eq(0, rz_big_cmp(b, c), "Failed rz_big_xor");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_inc(void) {
+	RzNumBig *a = rz_big_new();
+
+	rz_big_from_int(a, -1);
+	rz_big_inc(a);
+	mu_assert_eq(0, rz_big_to_int(a), "Failed rz_big_inc");
+	rz_big_inc(a);
+	mu_assert_eq(1, rz_big_to_int(a), "Failed rz_big_inc");
+
+	rz_big_free(a);
+	mu_end;
+}
+
+static bool test_rz_big_dec(void) {
+	RzNumBig *a = rz_big_new();
+
+	rz_big_from_int(a, 1);
+	rz_big_dec(a);
+	mu_assert_eq(0, rz_big_to_int(a), "Failed rz_big_dec");
+	rz_big_dec(a);
+	mu_assert_eq(-1, rz_big_to_int(a), "Failed rz_big_dec");
+
+	rz_big_free(a);
+	mu_end;
+}
+
+static bool test_rz_big_is_zero(void) {
+	RzNumBig *a = rz_big_new();
+
+	rz_big_from_int(a, 1);
+	rz_big_dec(a);
+	mu_assert_eq(1, rz_big_is_zero(a), "Failed rz_big_is_zero");
+	rz_big_dec(a);
+	mu_assert_eq(0, rz_big_is_zero(a), "Failed rz_big_is_zero");
+
+	rz_big_free(a);
+	mu_end;
+}
+
+static bool test_rz_big_lshift(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *c = rz_big_new();
+
+	rz_big_from_hexstr(a, "0x73204217f728a2fb7dc798618f23c5796675eee1ccd60a3a7be9cddf7d0eb30e9b004b0246051fcbc26ce99b67e23f07d3f2a493b1194af2777ffdfd5d66c61ba4fa2cd14536010ee00e695863039829c315c594c84170559822fcceb20afdc56a81ab7105e17efb0afd8f090bce2e5330e1c78e2e3ab26a1f49610b49b0fafa75b342b5c1a79322be4a92fac102958ed43aee787c221ea5c23e9485321c6b901cdb5c584bebcbea644a8f2c40bfbaf2dee40102e660e37d41b1f2ccee933a57693ee8ee2473bec98911ccd4b853704c7ed73b86da962845efe5399561fb3b0c37f5f0e730ddebcea7144351064f1ee04c1348125807a760186ac33316633d09");
+	rz_big_lshift(c, a, 1023);
+	rz_big_from_hexstr(a, "0x3990210bfb94517dbee3cc30c791e2bcb33af770e66b051d3df4e6efbe8759874d80258123028fe5e13674cdb3f11f83e9f95249d88ca5793bbffefeaeb3630dd27d1668a29b0087700734ac3181cc14e18ae2ca6420b82acc117e6759057ee2b540d5b882f0bf7d857ec78485e717299870e3c7171d59350fa4b085a4d87d7d3ad9a15ae0d3c9915f25497d60814ac76a1d773c3e110f52e11f4a42990e35c80e6dae2c25f5e5f532254796205fdd796f720081733071bea0d8f96677499d2bb49f74771239df64c488e66a5c29b8263f6b9dc36d4b1422f7f29ccab0fd9d861bfaf873986ef5e7538a21a883278f702609a4092c03d3b00c3561998b319e848000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+	mu_assert_eq(0, rz_big_cmp(c, a), "Failed rz_big_lshift");
+
+	rz_big_free(a);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_rshift(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *c = rz_big_new();
+
+	rz_big_from_hexstr(a, "0x73204217f728a2fb7dc798618f23c5796675eee1ccd60a3a7be9cddf7d0eb30e9b004b0246051fcbc26ce99b67e23f07d3f2a493b1194af2777ffdfd5d66c61ba4fa2cd14536010ee00e695863039829c315c594c84170559822fcceb20afdc56a81ab7105e17efb0afd8f090bce2e5330e1c78e2e3ab26a1f49610b49b0fafa75b342b5c1a79322be4a92fac102958ed43aee787c221ea5c23e9485321c6b901cdb5c584bebcbea644a8f2c40bfbaf2dee40102e660e37d41b1f2ccee933a57693ee8ee2473bec98911ccd4b853704c7ed73b86da962845efe5399561fb3b0c37f5f0e730ddebcea7144351064f1ee04c1348125807a760186ac33316633d09");
+	rz_big_rshift(c, a, 1023);
+	rz_big_from_hexstr(a, "0xe640842fee5145f6fb8f30c31e478af2ccebddc399ac1474f7d39bbefa1d661d360096048c0a3f9784d9d336cfc47e0fa7e54927623295e4eefffbfabacd8c3749f459a28a6c021dc01cd2b0c6073053862b8b299082e0ab3045f99d6415fb8ad50356e20bc2fdf615fb1e12179c5ca661c38f1c5c7564d43e92c2169361f5f4");
+	mu_assert_eq(0, rz_big_cmp(c, a), "Failed rz_big_rshift");
+
+	rz_big_free(a);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_powm(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+	RzNumBig *c = rz_big_new();
+	RzNumBig *m = rz_big_new();
+
+	rz_big_from_int(a, 3);
+	rz_big_from_int(b, 4);
+	rz_big_from_int(m, 7);
+	rz_big_powm(c, a, b, m);
+	mu_assert_eq(4, rz_big_to_int(c), "Failed rz_big_powm");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	rz_big_free(c);
+	rz_big_free(m);
+	mu_end;
+}
+
+static bool test_rz_big_pow(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *b = rz_big_new();
+	RzNumBig *c = rz_big_new();
+	char *str;
+
+	// 2^10 = 1024
+	rz_big_from_int(a, 2);
+	rz_big_from_int(b, 10);
+	rz_big_pow(c, a, b);
+	mu_assert_eq(1024, rz_big_to_int(c), "2^10");
+
+	// x^0 = 1
+	rz_big_from_int(b, 0);
+	rz_big_pow(c, a, b);
+	mu_assert_eq(1, rz_big_to_int(c), "2^0");
+
+	// x^1 = x
+	rz_big_from_int(b, 1);
+	rz_big_pow(c, a, b);
+	mu_assert_eq(2, rz_big_to_int(c), "2^1");
+
+	// 2^64 exceeds ut64; check the exact decimal form.
+	rz_big_from_int(a, 2);
+	rz_big_from_int(b, 64);
+	rz_big_pow(c, a, b);
+	str = rz_big_to_decstr(c);
+	mu_assert_streq_free(str, "18446744073709551616", "2^64");
+
+	// 10^20 exact.
+	rz_big_from_int(a, 10);
+	rz_big_from_int(b, 20);
+	rz_big_pow(c, a, b);
+	str = rz_big_to_decstr(c);
+	mu_assert_streq_free(str, "100000000000000000000", "10^20");
+
+	// Negative exponent yields zero by definition.
+	rz_big_from_int(a, 2);
+	rz_big_from_int(b, -3);
+	rz_big_pow(c, a, b);
+	mu_assert_eq(0, rz_big_to_int(c), "negative exponent -> 0");
+
+	rz_big_free(a);
+	rz_big_free(b);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_isqrt(void) {
+	RzNumBig *a = rz_big_new();
+	RzNumBig *c = rz_big_new();
+
+	rz_big_from_int(a, 4);
+	rz_big_isqrt(c, a);
+	mu_assert_eq(2, rz_big_to_int(c), "Failed rz_big_isqrt");
+
+	rz_big_from_int(a, 5);
+	rz_big_isqrt(c, a);
+	mu_assert_eq(2, rz_big_to_int(c), "Failed rz_big_isqrt");
+
+	rz_big_from_int(a, 6);
+	rz_big_isqrt(c, a);
+	mu_assert_eq(2, rz_big_to_int(c), "Failed rz_big_isqrt");
+
+	rz_big_from_int(a, 7);
+	rz_big_isqrt(c, a);
+	mu_assert_eq(2, rz_big_to_int(c), "Failed rz_big_isqrt");
+
+	rz_big_from_int(a, 8);
+	rz_big_isqrt(c, a);
+	mu_assert_eq(2, rz_big_to_int(c), "Failed rz_big_isqrt");
+
+	rz_big_from_int(a, 9);
+	rz_big_isqrt(c, a);
+	mu_assert_eq(3, rz_big_to_int(c), "Failed rz_big_isqrt");
+
+	// NOTE: This is too slow at the moment
+	// rz_big_from_hexstr (a, "0x73204217f728a2fb7dc798618f23c5796675eee1ccd60a3a7be9cddf7d0eb30e9b004b0246051fcbc26ce99b67e23f07d3f2a493b1194af2777ffdfd5d66c61ba4fa2cd14536010ee00e695863039829c315c594c84170559822fcceb20afdc56a81ab");
+	// rz_big_isqrt (c, a);
+	// rz_big_from_hexstr (a, "0xabacc3be640aee406684e32261e8d2ea2cd09a9441904e3213a1d93732f4774876b8136dab7f5e579338ac82cc96b7651f8");
+	// mu_assert_eq (0, rz_big_cmp (c, a), "Failed rz_big_isqrt");
+	rz_big_from_hexstr(a, "0x73204217f728a2fb7dc10a58f0d7d0c9690a40");
+	rz_big_isqrt(c, a);
+	rz_big_from_hexstr(a, "0xabacc3be640aee40668");
+	mu_assert_eq(0, rz_big_cmp(c, a), "Failed rz_big_isqrt");
+
+	rz_big_free(a);
+	rz_big_free(c);
+	mu_end;
+}
+
+static bool test_rz_big_decimal_str_roundtrip(void) {
+	const char *canonical[] = { "3.14", "0", "-2.5", "100", "0.001", "-0.5", NULL };
+	for (int i = 0; canonical[i]; i++) {
+		RzBigDecimal *d = rz_big_decimal_new_from_str(canonical[i]);
+		mu_assert_notnull(d, "new_from_str");
+		char *s = rz_big_decimal_to_str(d);
+		mu_assert_streq_free(s, canonical[i], "to_str round-trip");
+		rz_big_decimal_free(d);
+	}
+	mu_end;
+}
+
+static bool test_rz_big_decimal_from_int(void) {
+	RzBigDecimal *d = rz_big_decimal_new_from_int(42);
+	char *s = rz_big_decimal_to_str(d);
+	mu_assert_streq_free(s, "42", "from_int positive");
+	rz_big_decimal_free(d);
+	d = rz_big_decimal_new_from_int(-7);
+	s = rz_big_decimal_to_str(d);
+	mu_assert_streq_free(s, "-7", "from_int negative");
+	rz_big_decimal_free(d);
+	mu_end;
+}
+
+static bool test_rz_big_decimal_dup(void) {
+	RzBigDecimal *a = rz_big_decimal_new_from_str("12.34");
+	RzBigDecimal *b = rz_big_decimal_dup(a);
+	mu_assert_eq(rz_big_decimal_cmp(a, b), 0, "dup compares equal");
+	char *s = rz_big_decimal_to_str(b);
+	mu_assert_streq_free(s, "12.34", "dup keeps value");
+	rz_big_decimal_free(a);
+	rz_big_decimal_free(b);
+	mu_end;
+}
+
+static bool test_rz_big_decimal_add_sub_mul(void) {
+#define CHECK2(fn, sa, sb, want) \
+	do { \
+		RzBigDecimal *_a = rz_big_decimal_new_from_str(sa); \
+		RzBigDecimal *_b = rz_big_decimal_new_from_str(sb); \
+		RzBigDecimal *_r = fn(_a, _b); \
+		char *_s = rz_big_decimal_to_str(_r); \
+		mu_assert_streq_free(_s, want, sa " " #fn " " sb); \
+		rz_big_decimal_free(_a); \
+		rz_big_decimal_free(_b); \
+		rz_big_decimal_free(_r); \
+	} while (0)
+	CHECK2(rz_big_decimal_add, "0.1", "0.2", "0.3"); // exact, not 0.30000000000000004
+	CHECK2(rz_big_decimal_add, "1.5", "2.5", "4");
+	CHECK2(rz_big_decimal_sub, "10.0", "0.0001", "9.9999");
+	CHECK2(rz_big_decimal_sub, "1.5", "0.5", "1");
+	CHECK2(rz_big_decimal_mul, "0.1", "0.1", "0.01");
+	CHECK2(rz_big_decimal_mul, "-2", "2.5", "-5");
+#undef CHECK2
+	mu_end;
+}
+
+static bool test_rz_big_decimal_div(void) {
+	const char *a[] = { "1", "0.3", "1", NULL };
+	const char *b[] = { "4", "0.1", "2", NULL };
+	const char *want[] = { "0.25", "3", "0.5", NULL };
+	for (int i = 0; a[i]; i++) {
+		RzBigDecimal *x = rz_big_decimal_new_from_str(a[i]);
+		RzBigDecimal *y = rz_big_decimal_new_from_str(b[i]);
+		RzBigDecimal *r = rz_big_decimal_div(x, y, 10);
+		char *s = rz_big_decimal_to_str(r);
+		mu_assert_streq_free(s, want[i], a[i]);
+		rz_big_decimal_free(x);
+		rz_big_decimal_free(y);
+		rz_big_decimal_free(r);
+	}
+	mu_end;
+}
+
+static bool test_rz_big_decimal_neg(void) {
+	RzBigDecimal *a = rz_big_decimal_new_from_str("2.5");
+	RzBigDecimal *n = rz_big_decimal_neg(a);
+	char *s = rz_big_decimal_to_str(n);
+	mu_assert_streq_free(s, "-2.5", "neg of positive");
+	rz_big_decimal_free(n);
+	rz_big_decimal_free(a);
+	a = rz_big_decimal_new_from_str("-3");
+	n = rz_big_decimal_neg(a);
+	s = rz_big_decimal_to_str(n);
+	mu_assert_streq_free(s, "3", "neg of negative");
+	rz_big_decimal_free(n);
+	rz_big_decimal_free(a);
+	mu_end;
+}
+
+static bool test_rz_big_decimal_cmp_and_zero(void) {
+	RzBigDecimal *a = rz_big_decimal_new_from_str("0.1");
+	RzBigDecimal *b = rz_big_decimal_new_from_str("0.2");
+	mu_assert_true(rz_big_decimal_cmp(a, b) < 0, "0.1 < 0.2");
+	mu_assert_true(rz_big_decimal_cmp(b, a) > 0, "0.2 > 0.1");
+	mu_assert_eq(rz_big_decimal_cmp(a, a), 0, "0.1 == 0.1");
+	mu_assert_false(rz_big_decimal_is_zero(a), "0.1 is not zero");
+	rz_big_decimal_free(a);
+	rz_big_decimal_free(b);
+	// scale-only differences still count as zero
+	const char *zeros[] = { "0", "0.000", "-0", NULL };
+	for (int i = 0; zeros[i]; i++) {
+		RzBigDecimal *z = rz_big_decimal_new_from_str(zeros[i]);
+		mu_assert_true(rz_big_decimal_is_zero(z), zeros[i]);
+		rz_big_decimal_free(z);
+	}
+	mu_end;
+}
+
+static bool test_rz_big_decimal_to_ut64_double(void) {
+	RzBigDecimal *d = rz_big_decimal_new_from_str("42.9");
+	mu_assert_eq(rz_big_decimal_to_ut64(d), 42, "to_ut64 truncates toward zero");
+	double dd = rz_big_decimal_to_double(d);
+	mu_assert_true(dd > 42.89 && dd < 42.91, "to_double ~= 42.9");
+	rz_big_decimal_free(d);
+	d = rz_big_decimal_new_from_str("0.5");
+	dd = rz_big_decimal_to_double(d);
+	mu_assert_true(dd > 0.49 && dd < 0.51, "to_double ~= 0.5");
+	rz_big_decimal_free(d);
+	mu_end;
+}
+
+static int all_tests(void) {
+	mu_run_test(test_rz_big_from_to_int);
+	mu_run_test(test_rz_big_from_to_hexstr);
+	mu_run_test(test_rz_big_to_decstr);
+	mu_run_test(test_rz_big_assign);
+	mu_run_test(test_rz_big_cmp);
+	mu_run_test(test_rz_big_add);
+	mu_run_test(test_rz_big_sub);
+	mu_run_test(test_rz_big_mul);
+	mu_run_test(test_rz_big_div);
+	mu_run_test(test_rz_big_divmod);
+	mu_run_test(test_rz_big_mod);
+	mu_run_test(test_rz_big_and);
+	mu_run_test(test_rz_big_or);
+	mu_run_test(test_rz_big_xor);
+	mu_run_test(test_rz_big_inc);
+	mu_run_test(test_rz_big_dec);
+	mu_run_test(test_rz_big_is_zero);
+	mu_run_test(test_rz_big_lshift);
+	mu_run_test(test_rz_big_rshift);
+	mu_run_test(test_rz_big_powm);
+	mu_run_test(test_rz_big_pow);
+	mu_run_test(test_rz_big_isqrt);
+	mu_run_test(test_rz_big_decimal_str_roundtrip);
+	mu_run_test(test_rz_big_decimal_from_int);
+	mu_run_test(test_rz_big_decimal_dup);
+	mu_run_test(test_rz_big_decimal_add_sub_mul);
+	mu_run_test(test_rz_big_decimal_div);
+	mu_run_test(test_rz_big_decimal_neg);
+	mu_run_test(test_rz_big_decimal_cmp_and_zero);
+	mu_run_test(test_rz_big_decimal_to_ut64_double);
+	return tests_passed != tests_run;
+}
+
+mu_main(all_tests)

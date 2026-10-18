@@ -1,0 +1,130 @@
+// SPDX-FileCopyrightText: 2015 pancake <pancake@nopcode.org>
+// SPDX-License-Identifier: LGPL-3.0-only
+
+/* implementation */
+
+static int iscallret(RzDebug *dbg, ut64 addr) {
+	ut8 buf[32];
+	if (addr == 0LL || addr == UT64_MAX)
+		return 0;
+	/* check if region is executable */
+	/* check if previous instruction is a call */
+	/* if x86 expect CALL to be 5 byte length */
+	if (dbg->arch && !strcmp(dbg->arch, "x86")) {
+		(void)dbg->iob.read_at(dbg->iob.io, addr - 5, buf, 5);
+		if (buf[0] == 0xe8) {
+			return 1;
+		}
+		if (buf[3] == 0xff /* bits 4-5 (from right) of next byte must be 01 */
+			&& ((buf[4] & 0xf0) == 0xd0 /* Mod is 11 */
+				   || ((buf[4] & 0xf0) == 0x10 /* Mod is 00 */
+					      && (buf[4] & 0x06) != 0x04))) { /* R/M not 10x */
+			return 1;
+		}
+		/* check for 7-byte CALL indirect (encoded by FF 14 25) */
+		(void)dbg->iob.read_at(dbg->iob.io, addr - 7, buf, 7);
+		if (!memcmp(buf, "\xff\x14\x25", 3)) {
+			return 1;
+		}
+		// IMMAMISSINGANYOP
+	} else if (dbg->arch && !strcmp(dbg->arch, "riscv")) {
+		RzAnalysisOp op = { 0 };
+		(void)dbg->iob.read_at(dbg->iob.io, addr - 4, buf, 4);
+		rz_analysis_op_init(&op);
+
+		(void)rz_analysis_op(dbg->analysis, &op, addr - 4, buf, 4, RZ_ANALYSIS_OP_MASK_ALL);
+		// is the operation precedeing the address a call ?
+		if (op.type == RZ_ANALYSIS_OP_TYPE_CALL || op.type == RZ_ANALYSIS_OP_TYPE_UCALL) {
+			bool target_known = op.jump != 0 && op.jump != UT64_MAX;
+			// The address is assumed to be a true return address when one of the following is true
+			// 		1. The target of the call is known and is a valid function
+			// 		2. The target of the call is unknown (register-indirect call or similar)
+			if (!target_known || rz_analysis_get_function_at(dbg->analysis, op.jump)) {
+				rz_analysis_op_fini(&op);
+				return 1;
+			}
+		}
+		rz_analysis_op_fini(&op);
+	} else {
+		RzAnalysisOp op = { 0 };
+		(void)dbg->iob.read_at(dbg->iob.io, addr - 8, buf, 8);
+		rz_analysis_op_init(&op);
+		(void)rz_analysis_op(dbg->analysis, &op, addr - 8, buf, 8, RZ_ANALYSIS_OP_MASK_BASIC);
+		if (op.type == RZ_ANALYSIS_OP_TYPE_CALL || op.type == RZ_ANALYSIS_OP_TYPE_UCALL) {
+			rz_analysis_op_fini(&op);
+			return 1;
+		}
+		rz_analysis_op_fini(&op);
+		/* delay slot */
+		rz_analysis_op_init(&op);
+		(void)rz_analysis_op(dbg->analysis, &op, addr - 4, buf, 4, RZ_ANALYSIS_OP_MASK_BASIC);
+		if (op.type == RZ_ANALYSIS_OP_TYPE_CALL || op.type == RZ_ANALYSIS_OP_TYPE_UCALL) {
+			rz_analysis_op_fini(&op);
+			return 1;
+		}
+		rz_analysis_op_fini(&op);
+	}
+	return 0;
+}
+
+static RzList /*<RzDebugFrame *>*/ *backtrace_fuzzy(RzDebug *dbg, ut64 at) {
+	ut8 *stack, *ptr;
+	int wordsize = dbg->bits; // XXX, dbg->bits is wordsize not bits
+	ut64 sp;
+	RzIOBind *bio = &dbg->iob;
+	int i, stacksize;
+	ut64 *p64, addr = 0LL;
+	ut32 *p32;
+	ut16 *p16;
+	ut64 cursp, oldsp;
+	RzList *list;
+
+	stacksize = 1024 * 512; // 512KB .. should get the size from the regions if possible
+	stack = malloc(stacksize);
+	if (at == UT64_MAX) {
+		RzRegItem *ri;
+		RzReg *reg = dbg->reg;
+		ri = rz_reg_get_by_role(reg, RZ_REG_NAME_SP);
+		if (!ri) {
+			eprintf("Cannot find stack pointer register\n");
+			free(stack);
+			return NULL;
+		}
+		sp = rz_reg_get_value(reg, ri);
+	} else {
+		sp = at;
+	}
+
+	list = rz_list_new();
+	list->free = free;
+	cursp = oldsp = sp;
+	(void)bio->read_at(bio->io, sp, stack, stacksize);
+	ptr = stack;
+	for (i = 0; i < dbg->btdepth; i++) {
+		p64 = (ut64 *)ptr;
+		p32 = (ut32 *)ptr;
+		p16 = (ut16 *)ptr;
+		switch (wordsize) {
+		case 8: addr = *p64; break;
+		case 4: addr = *p32; break;
+		case 2: addr = *p16; break;
+		default:
+			eprintf("Invalid word size with asm.bits\n");
+			rz_list_free(list);
+			return NULL;
+		}
+		if (iscallret(dbg, addr)) {
+			RzDebugFrame *frame = RZ_NEW0(RzDebugFrame);
+			frame->addr = addr;
+			frame->size = cursp - oldsp;
+			frame->sp = cursp;
+			frame->bp = oldsp; // addr + (i * wordsize); // -4 || -8
+			// eprintf ("--------------> 0x%" PFMT64x " (%d)\n", addr, frame->size);
+			rz_list_append(list, frame);
+			oldsp = cursp;
+		}
+		ptr += wordsize;
+		cursp += wordsize;
+	}
+	return list;
+}

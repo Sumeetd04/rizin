@@ -1,0 +1,137 @@
+NAME=ELF: arm-init - entry and init/fini
+FILE=bins/elf/arm-init
+CMDS=<<EOF
+ie
+echo ---
+iee
+EOF
+EXPECT=<<EOF
+     vaddr      paddr     hvaddr      haddr type    
+----------------------------------------------------
+0x000002e4 0x000002e4 0x00000018 0x00000018 program
+0x00000344 0x00000344 0x00001ed8 0x00000ed8 init
+0x000002e4 0x000002e4 0x00001ed0 0x00000ed0 fini
+---
+     vaddr      paddr     hvaddr      haddr type 
+-------------------------------------------------
+0x00000344 0x00000344 0x00001ed8 0x00000ed8 init
+0x000002e4 0x000002e4 0x00001ed0 0x00000ed0 fini
+EOF
+RUN
+
+NAME=ELF: thumb - symbols and disassembly
+FILE=bins/elf/analysis/thumb
+CMDS=<<EOF
+%v entry0
+echo ---
+%v sym.main
+echo ---
+s sym.main
+pi 1
+echo ---
+is~main
+echo ---
+pi 7@ sym.main
+echo ---
+pi 14@ sym.main
+echo ---
+pi 2@ sym.main
+af@ sym.main
+pi 2@ sym.main
+EOF
+EXPECT=<<EOF
+0x82f0
+---
+0x8424
+---
+push {r7, lr}
+---
+107 0x00000424 0x00008424 GLOBAL FUNC     16     main
+  1 0x000002bc 0x000082bc GLOBAL FUNC      0     imp.__libc_start_main
+---
+push {r7, lr}
+add r7, sp, 0
+movs r0, 0xa
+bl 0x82d4
+adds r0, r3, 0
+mov sp, r7
+pop {r7, pc}
+---
+push {r7, lr}
+add r7, sp, 0
+movs r0, 0xa
+bl 0x82d4
+adds r0, r3, 0
+mov sp, r7
+pop {r7, pc}
+push {r3, r4, r5, r6, r7, r8, sl, lr}
+mov r5, r0
+mov r6, r1
+mov r7, r2
+ldr r8, [0x00008494]
+bl sym._init
+ldr r3, [0x00008498]
+---
+push {r7, lr}
+add r7, sp, 0
+push {r7, lr}
+add r7, sp, 0
+EOF
+RUN
+
+NAME=ELF: libsimplejni.so - mixed arm/thumb disassembly
+FILE=bins/elf/analysis/libsimplejni.so
+CMDS=<<EOF
+pi 7@ entry0
+echo ---
+pi 6@ sym.JNI_OnLoad
+EOF
+EXPECT=<<EOF
+push {fp, lr}
+add fp, sp, 4
+ldr r3, [0x00000f64]
+add r3, pc, r3
+mov r0, r3
+bl sym.imp.__cxa_finalize
+pop {fp, pc}
+---
+push {r4, lr}
+sub sp, 8
+mov r4, r0
+ldr r0, [0x000010e0]
+ldr r1, [0x000010e4]
+add r0, pc
+EOF
+RUN
+
+NAME=ELF: arm-thumb-dwarf - Thumb main tagged with $t mapping symbol
+FILE=bins/elf/dwarf/arm-thumb-dwarf.elf
+CMDS=<<EOF
+s main
+pi 6
+EOF
+EXPECT=<<EOF
+push {r7, lr}
+sub sp, 8
+add r7, sp, 0
+str r0, [r7, 4]
+str r1, [r7]
+ldr r3, [r7, 4]
+EOF
+RUN
+
+NAME=ELF: big-endian ARM, mapping symbols typed STT_FUNC/STT_OBJECT
+FILE=bins/elf/analysis/2048-P2K-AHI_EP1.elf
+CMDS=<<EOF
+s 0x81f0
+pi 6
+EOF
+EXPECT=<<EOF
+movs r1, 0
+lsls r2, r1, 2
+ldr r3, [r0, r2]
+ldr r2, [r5, r2]
+cmp r3, r2
+beq 0x8200
+EOF
+RUN

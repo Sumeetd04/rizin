@@ -1,0 +1,82 @@
+NAME=test pDj missing newline issue
+FILE==
+CMDS=<<EOF
+e asm.arch=x86
+e asm.bits=64
+wx 4883c768
+pDj 4~{}
+EOF
+EXPECT=<<EOF
+[
+  {
+    "offset": 0,
+    "ptr": 104,
+    "val": 104,
+    "esil": "104,rdi,+=,63,$o,of,:=,63,$s,sf,:=,$z,zf,:=,63,$c,cf,:=,$p,pf,:=,3,$c,af,:=",
+    "refptr": false,
+    "fcn_addr": 0,
+    "fcn_last": 0,
+    "size": 4,
+    "opcode": "add rdi, 0x68",
+    "disasm": "add rdi, 0x68",
+    "bytes": "4883c768",
+    "family": "cpu",
+    "type": "add",
+    "reloc": false,
+    "type_num": 17,
+    "type2_num": 0
+  }
+]
+EOF
+RUN
+
+NAME=json path array object projection
+FILE==
+CMDS=<<EOF
+echo [{\"s\":\"alpha\",\"n\":1,\"b\":true,\"nil\":null,\"obj\":{\"x\":1},\"arr\":[1,2]},{\"s\":\"beta\",\"n\":2,\"b\":false,\"obj\":{\"y\":\"z\"}},{\"s\":\"gamma\",\"arr\":[]}]~{.[]\|{s,n,b,nil,obj,arr,missing}}
+echo [{\"k\":1},7,\"x\",null,true,[],{\"z\":2},{\"k\":3}]~{.[]\|{k}}
+echo []~{ .[] \| { key1, key2 } }
+echo [{\"key1\":1}]~{ . [ ] \| { key1 } }
+echo [{\"a b\":1},{\"a\":2}]~{.[]\|{a b}}
+echo [{\"arr\":[null,1]}]~{.[]\|{arr}}
+echo [{\"z\":1},{\"z\":2}]~{.[]\|{key1,key2}}
+echo [{\"offset2\":5},{\"offset\":7,\"offset2\":8}]~{.[]\|{offset}}
+echo {\"key1\":1}~{.[]\|{key1}}
+echo {\"a{b\":7}~{.a{b}
+EOF
+EXPECT=<<EOF
+[{"s":"alpha","n":1,"b":true,"nil":null,"obj":{"x":1},"arr":[1,2]},{"s":"beta","n":2,"b":false,"obj":{"y":"z"}},{"s":"gamma","arr":[]}]
+[{"k":1},{},{"k":3}]
+[]
+[{"key1":1}]
+[{"a b":1},{}]
+[{"arr":[null,1]}]
+[{},{}]
+[{},{"offset":7}]
+[]
+7
+EOF
+RUN
+
+NAME=/zj with backslash
+FILE=bins/pe/ConsoleApplication1.exe
+CMDS=/zj ConsoleApplication1.pdb~{}
+EXPECT=<<EOF
+[
+  {
+    "address": 4203952,
+    "size": 23,
+    "flag": "hit.string.ascii.0",
+    "detail": 23
+  }
+]
+EOF
+RUN
+
+NAME=irj without any bin file should print an empty array
+FILE==
+CMDS=irj
+EXPECT=<<EOF
+[]
+EOF
+RUN

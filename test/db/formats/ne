@@ -1,0 +1,740 @@
+NAME=NE anim8 analysis
+FILE=bins/ne/anim8.exe
+CMDS=<<EOF
+ia
+echo ---
+il
+echo ---
+iH
+echo ---
+pd 30 @ sym.WNDPROC
+echo ---
+pd 30 @ sym.DIAL_ABOUT
+EOF
+EXPECT=<<EOF
+[Info]
+arch     x86
+cpu      N/A
+features N/A
+baddr    ----------
+binsz    0x0004ca10
+bintype  N/A
+bits     16
+class    N/A
+compiler N/A
+dbg_file N/A
+endian   LE
+hdr.csum 00000000
+guid     N/A
+intrp    N/A
+laddr    0x00000000
+lang     N/A
+machine  N/A
+maxopsz  16
+minopsz  1
+os       Windows
+cc       N/A
+pcalign  1
+rpath    N/A
+subsys   
+stripped false
+havecode true
+va       false
+static   false
+linenum  false
+lsyms    false
+canary   false
+pie      false
+relrocs  false
+nx       false
+
+[Imports]
+nth      vaddr bind   type lib     name                      
+-------------------------------------------------------------
+ 91 ---------- IMPORT FUNC KERNEL  INITTASK
+ 23 ---------- IMPORT FUNC KERNEL  LOCKSEGMENT
+ 30 ---------- IMPORT FUNC KERNEL  WAITEVENT
+  5 ---------- IMPORT FUNC USER    INITAPP
+132 ---------- IMPORT FUNC KERNEL  GETWINFLAGS
+ 24 ---------- IMPORT FUNC KERNEL  UNLOCKSEGMENT
+ 10 ---------- IMPORT FUNC USER    SETTIMER
+ 12 ---------- IMPORT FUNC USER    KILLTIMER
+110 ---------- IMPORT FUNC USER    POSTMESSAGE
+127 ---------- IMPORT FUNC KERNEL  GETPRIVATEPROFILEINT
+ 33 ---------- IMPORT FUNC USER    GETCLIENTRECT
+176 ---------- IMPORT FUNC USER    LOADSTRING
+108 ---------- IMPORT FUNC USER    GETMESSAGE
+114 ---------- IMPORT FUNC USER    DISPATCHMESSAGE
+113 ---------- IMPORT FUNC USER    TRANSLATEMESSAGE
+178 ---------- IMPORT FUNC USER    TRANSLATEACCELERATOR
+177 ---------- IMPORT FUNC USER    LOADACCELERATORS
+124 ---------- IMPORT FUNC USER    UPDATEWINDOW
+ 42 ---------- IMPORT FUNC USER    SHOWWINDOW
+ 41 ---------- IMPORT FUNC USER    CREATEWINDOW
+ 57 ---------- IMPORT FUNC USER    REGISTERCLASS
+ 87 ---------- IMPORT FUNC GDI     GETSTOCKOBJECT
+173 ---------- IMPORT FUNC USER    LOADCURSOR
+  6 ---------- IMPORT FUNC USER    POSTQUITMESSAGE
+ 55 ---------- IMPORT FUNC KERNEL  CATCH
+171 ---------- IMPORT FUNC USER    WINHELP
+129 ---------- IMPORT FUNC KERNEL  WRITEPRIVATEPROFILESTRING
+ 32 ---------- IMPORT FUNC USER    GETWINDOWRECT
+ 31 ---------- IMPORT FUNC USER    ISICONIC
+125 ---------- IMPORT FUNC USER    INVALIDATERECT
+ 52 ---------- IMPORT FUNC KERNEL  FREEPROCINSTANCE
+ 87 ---------- IMPORT FUNC USER    DIALOGBOX
+ 51 ---------- IMPORT FUNC KERNEL  MAKEPROCINSTANCE
+154 ---------- IMPORT FUNC USER    CHECKMENUITEM
+157 ---------- IMPORT FUNC USER    GETMENU
+111 ---------- IMPORT FUNC USER    SENDMESSAGE
+ 68 ---------- IMPORT FUNC USER    RELEASEDC
+ 66 ---------- IMPORT FUNC USER    GETDC
+174 ---------- IMPORT FUNC USER    LOADICON
+107 ---------- IMPORT FUNC USER    DEFWINDOWPROC
+ 45 ---------- IMPORT FUNC GDI     SELECTOBJECT
+ 31 ---------- IMPORT FUNC GDI     SETPIXEL
+ 69 ---------- IMPORT FUNC GDI     DELETEOBJECT
+ 24 ---------- IMPORT FUNC GDI     ELLIPSE
+ 66 ---------- IMPORT FUNC GDI     CREATESOLIDBRUSH
+ 61 ---------- IMPORT FUNC GDI     CREATEPEN
+ 37 ---------- IMPORT FUNC GDI     POLYLINE
+ 27 ---------- IMPORT FUNC GDI     RECTANGLE
+ 29 ---------- IMPORT FUNC GDI     PATBLT
+ 68 ---------- IMPORT FUNC GDI     DELETEDC
+ 35 ---------- IMPORT FUNC GDI     STRETCHBLT
+  7 ---------- IMPORT FUNC GDI     SETSTRETCHBLTMODE
+ 52 ---------- IMPORT FUNC GDI     CREATECOMPATIBLEDC
+ 82 ---------- IMPORT FUNC GDI     GETOBJECT
+175 ---------- IMPORT FUNC USER    LOADBITMAP
+  1 ---------- IMPORT FUNC GDI     SETBKCOLOR
+  9 ---------- IMPORT FUNC GDI     SETTEXTCOLOR
+ 15 ---------- IMPORT FUNC USER    GETCURRENTTIME
+ 19 ---------- IMPORT FUNC GDI     LINETO
+ 20 ---------- IMPORT FUNC GDI     MOVETO
+138 ---------- IMPORT FUNC USER    CLOSECLIPBOARD
+141 ---------- IMPORT FUNC USER    SETCLIPBOARDDATA
+139 ---------- IMPORT FUNC USER    EMPTYCLIPBOARD
+137 ---------- IMPORT FUNC USER    OPENCLIPBOARD
+ 19 ---------- IMPORT FUNC KERNEL  GLOBALUNLOCK
+113 ---------- IMPORT FUNC KERNEL  __AHSHIFT
+ 18 ---------- IMPORT FUNC KERNEL  GLOBALLOCK
+ 15 ---------- IMPORT FUNC KERNEL  GLOBALALLOC
+ 88 ---------- IMPORT FUNC USER    ENDDIALOG
+ 40 ---------- IMPORT FUNC USER    ENDPAINT
+ 84 ---------- IMPORT FUNC USER    DRAWICON
+ 39 ---------- IMPORT FUNC USER    BEGINPAINT
+ 91 ---------- IMPORT FUNC USER    GETDLGITEM
+ 56 ---------- IMPORT FUNC KERNEL  THROW
+  1 ---------- IMPORT FUNC USER    MESSAGEBOX
+ 74 ---------- IMPORT FUNC KERNEL  OPENFILE
+ 49 ---------- IMPORT FUNC KERNEL  GETMODULEFILENAME
+ 47 ---------- IMPORT FUNC KERNEL  GETMODULEHANDLE
+ 69 ---------- IMPORT FUNC USER    SETCURSOR
+ 71 ---------- IMPORT FUNC USER    SHOWCURSOR
+ 58 ---------- IMPORT FUNC KERNEL  GETPROFILESTRING
+ 57 ---------- IMPORT FUNC KERNEL  GETPROFILEINT
+ 34 ---------- IMPORT FUNC GDI     BITBLT
+ 51 ---------- IMPORT FUNC GDI     CREATECOMPATIBLEBITMAP
+286 ---------- IMPORT FUNC USER    GETDESKTOPWINDOW
+  1 ---------- IMPORT FUNC WIN87EM __FPMATH
+ 95 ---------- IMPORT FUNC KERNEL  LOADLIBRARY
+  7 ---------- IMPORT FUNC KERNEL  LOCALFREE
+  5 ---------- IMPORT FUNC KERNEL  LOCALALLOC
+  6 ---------- IMPORT FUNC KERNEL  LOCALREALLOC
+131 ---------- IMPORT FUNC KERNEL  GETDOSENVIRONMENT
+
+[Entries]
+     vaddr      paddr     hvaddr      haddr type    
+----------------------------------------------------
+0x00000a00 0x00000a00 ---------- ---------- program
+0x00000d8e 0x00000d8e ---------- ---------- program
+0x00002b5a 0x00002b5a ---------- ---------- program
+
+[Exports]
+nth paddr vaddr bind type size lib name 
+----------------------------------------
+
+[Classes]
+address min max name super 
+---------------------------
+
+[Symbols]
+nth      paddr      vaddr bind    type         size lib name       
+-------------------------------------------------------------------
+  0 ---------- ---------- UNKNOWN RESIDENT        0     ANIM8
+  1 0x00000d8e 0x00000d8e EXPORT  RESIDENT        0     WNDPROC
+  2 0x00002b5a 0x00002b5a EXPORT  RESIDENT        0     DIAL_ABOUT
+  0 ---------- ---------- UNKNOWN NON-RESIDENT    0     ANIM8
+
+[Sections]
+paddr size vaddr vsize align perm name type flags 
+--------------------------------------------------
+
+[Memory]
+name size address flags mirror 
+-------------------------------
+
+[Strings]
+     paddr      vaddr len size section type  string                                         
+--------------------------------------------------------------------------------------------
+0x0000762b 0x0000762b  42   43         ascii Borland C++ - Copyright 1991 Borland Intl.
+0x0000765c 0x0000765c   5    6         ascii MENUS
+0x00007662 0x00007662   9   10         ascii anim8.cpp
+0x0000766c 0x0000766c   6    7         ascii ACCELS
+0x00007673 0x00007673   5    6         ascii ICONX
+0x00007679 0x00007679   4    5         ascii keys
+0x0000767e 0x0000767e  10   11         ascii DIAL_ABOUT
+0x00007699 0x00007699  14   15         ascii !\t@spheres.cpp
+0x000076fa 0x000076fa   9   10         ascii earth.cpp
+0x00007704 0x00007704   8    9         ascii frame_%d
+0x0000770e 0x0000770e   9   10         ascii lines.cpp
+0x0000772f 0x0000772f  10   11         ascii @hyper.cpp
+0x0000775c 0x0000775c   9   10         ascii snake.cpp
+0x00007770 0x00007770   6    7         ascii %s%s%s
+0x00007777 0x00007777   6    7         ascii %s/%ld
+0x0000777e 0x0000777e   5    6         ascii ICONX
+0x00007784 0x00007784   8    9         ascii psslib.c
+0x0000778d 0x0000778d   4    5         ascii intl
+0x00007792 0x00007792   6    7         ascii iLzero
+0x00007799 0x00007799   8    9         ascii sdecimal
+0x000077a4 0x000077a4   7    8         ascii itlzero
+0x000077ac 0x000077ac   5    6         ascii stime
+0x000077b7 0x000077b7  32   32         ascii          !!!!!                  
+0x000077d8 0x000077d8  15   15         ascii @@@@@@@@@@@@@@@
+0x000077f1 0x000077f1   7    7         ascii @@@@@@@
+0x00007812 0x00007812   6    6         ascii @@@@@@
+0x0000781e 0x0000781e  25   26         ascii \b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b@@@@ 
+0x000078b8 0x000078b8   6    7         ascii v%v%v%
+0x00007a42 0x00007a42  12   12         ascii ),(((((),(((
+0x00007a66 0x00007a66   4    4         ascii *(((
+0x00007a8c 0x00007a8c   4    5         ascii .$$$
+0x00007a96 0x00007a96   6    7         ascii (null)
+0x00007b3e 0x00007b3e   7    8         ascii WIN87EM
+0x00007b46 0x00007b46  29   30         ascii Runtime Error: Stack Overflow
+0x00007b66 0x00007b66  26   27         ascii Out of memory in _setargv0
+0x00007ba6 0x00007ba6  46   47         ascii Floating Point: Square Root of Negative Number
+0x00007bd5 0x00007bd5   7    8         ascii Invalid
+0x00007bdd 0x00007bdd   8    9         ascii DeNormal
+0x00007be6 0x00007be6  14   15         ascii Divide by Zero
+0x00007bf5 0x00007bf5   8    9         ascii Overflow
+0x00007bfe 0x00007bfe   9   10         ascii Underflow
+0x00007c08 0x00007c08   7    8         ascii Inexact
+0x00007c10 0x00007c10  10   11         ascii Unemulated
+0x00007c1b 0x00007c1b  14   15         ascii Stack Overflow
+0x00007c2a 0x00007c2a  15   16         ascii Stack Underflow
+0x00007c3a 0x00007c3a  16   17         ascii Exception Raised
+0x00007c4b 0x00007c4b  15   16         ascii Program Aborted
+0x00007c5b 0x00007c5b  19   20         ascii Illegal Instruction
+0x00007c6f 0x00007c6f  17   18         ascii Segment Violation
+0x00007c81 0x00007c81  19   20         ascii Floating Point Trap
+0x00007c95 0x00007c95  18   19         ascii Program Terminated
+0x00007ca8 0x00007ca8  28   29         ascii Abnormal Program Termination
+0x00007cf3 0x00007cf3   9   10         ascii \a\e\aDOMAIN
+0x00007cfd 0x00007cfd   4    5         ascii SING
+0x00007d02 0x00007d02   8    9         ascii OVERFLOW
+0x00007d0b 0x00007d0b   9   10         ascii UNDERFLOW
+0x00007d15 0x00007d15   5    6         ascii TLOSS
+0x00007d1b 0x00007d1b   5    6         ascii PLOSS
+0x00007dc2 0x00007dc2   4    5         ascii sqrt
+0x00007dd4 0x00007dd4  13   14         ascii %s: %s error\n
+
+---
+library 
+--------
+KERNEL
+USER
+GDI
+WIN87EM
+---
+ne:
+  MajLinkerVersion: 5
+  MinLinkerVersion: 10
+  EntryTableOffset: 0x3c4
+  EntryTableLength: 16
+  FileLoadCRC: 0x0
+  FlagWord: 0x30a
+  AutoDataSegIndex: 2
+  InitHeapSize: 1024
+  InitStackSize: 30000
+  EntryPoint CS: 0x1
+  EntryPoint IP: 0x0
+  InitStack: 0x20000
+  SegCount: 2
+  ModuleRefsCount: 4
+  NonResNamesTblSiz: 0x9
+  SegTableOffset: 0x40
+  ResourceTblOff: 0x50
+  ResidentNameTblOff: 0x383
+  ModuleRefTblOff: 0x3a3
+  ImportNameTblOff: 0x3ab
+  OffStartNonResTab: 1572
+  MovEntryCount: 2
+  FileAlnSzShftCnt: 9
+  nResTabEntries: 0
+  OS: "Windows"
+  OS2EXEFlags: 0x8
+  retThunkOffset: 0x4
+  segRefThunksOff: 0x58
+  mincodeswap: 0
+  winver: "3.0"
+
+---
+            ;-- entry1:
+            ;-- WNDPROC:
+            0000:0d8e     mov   ax, ds                                 ; RELOC 16 
+            0000:0d90     nop
+            0000:0d91     inc   bp
+            0000:0d92     push  bp
+            0000:0d93     mov   bp, sp
+            0000:0d95     push  ds
+            0000:0d96     mov   ds, ax
+            0000:0d98     mov   ax, 0x5c                               ; '\'
+            0000:0d9b     call  0x4d35
+            0000:0d9e     push  si
+            0000:0d9f     push  di
+            0000:0da0     mov   dx, word [bp+0x0e]
+            0000:0da3     mov   di, word [bp+0x0c]
+            0000:0da6     mov   si, word [bp+0x0a]
+            0000:0da9     mov   word [0x3e56], dx
+            0000:0dad     mov   ax, di
+            0000:0daf     cmp   ax, 0x101
+        ,=< 0000:0db2     jnz   0xdb7
+       ,==< 0000:0db4     jmp   0xefb
+      ,=`-> 0000:0db7     jnbe  0xde6
+      ||    0000:0db9     cmp   ax, 0x05
+      ||,=< 0000:0dbc     jnz   0xdc1
+     ,====< 0000:0dbe     jmp   0xf98
+    ,===`-> 0000:0dc1     jnbe  0xdd3
+    ||||    0000:0dc3     cmp   ax, 0x01
+    ||||,=< 0000:0dc6     jz    0xe0e
+    |||||   0000:0dc8     cmp   ax, 0x02
+   ,======< 0000:0dcb     jnz   0xdd0
+  ,=======< 0000:0dcd     jmp   0x1352
+  =`------> 0000:0dd0     jmp   0x13b7
+---
+            ;-- entry2:
+            ;-- DIAL_ABOUT:
+            0000:2b5a     mov   ax, ds                                 ; RELOC 16 
+            0000:2b5c     nop
+            0000:2b5d     inc   bp
+            0000:2b5e     push  bp
+            0000:2b5f     mov   bp, sp
+            0000:2b61     push  ds
+            0000:2b62     mov   ds, ax
+            0000:2b64     mov   ax, 0x20                               ; "jr"
+            0000:2b67     call  0x4d35
+            0000:2b6a     push  si
+            0000:2b6b     mov   si, word [bp+0x0e]
+            0000:2b6e     mov   ax, word [bp+0x0c]
+            0000:2b71     cmp   ax, 0x0f                               ; 0xf
+        ,=< 0000:2b74     jz    0x2bae
+        |   0000:2b76     cmp   ax, 0x110
+       ,==< 0000:2b79     jz    0x2b86
+       ||   0000:2b7b     cmp   ax, 0x111
+      ,===< 0000:2b7e     jnz   0x2b83
+     ,====< 0000:2b80     jmp   0x2c1d
+    ,=`---> 0000:2b83     jmp   0x2c3a
+    || `--> 0000:2b86     push  word [0x3e6a]                          ; 'j>' ; "F\xfe\x89V\xfcV\xe8\x9d\xfe\x99\U00000001F\xfc\U00000011V\xfe\xeb\vV\xe8\x90\xfe\x99)F\xfc\U00000019V\xfe\x8bV\xfe\x8bF\xfc^\x8b"
+    ||  |   0000:2b8a     push  ds
+    ||  |   0000:2b8b     push  0x17e
+    ||  |   0000:2b8e     call  far 0x0000:0xffff
+    ||  |   0000:2b93     mov   word [0x3e4c], ax
+    ||  |   0000:2b96     push  si
+    ||  |   0000:2b97     push  0x76                                   ; 'v'
+    ||  |   0000:2b99     call  far 0x0000:0xffff
+    ||  |   0000:2b9e     mov   word [0x3e4a], ax
+    ||  |   0000:2ba1     mov   ax, 0x01
+EOF
+RUN
+
+NAME=Chips Challenge relocs
+FILE=bins/ne/CHIPS.EXE
+CMDS=ia
+EXPECT=<<EOF
+[Info]
+arch     x86
+cpu      N/A
+features N/A
+baddr    ----------
+binsz    0x00041600
+bintype  N/A
+bits     16
+class    N/A
+compiler N/A
+dbg_file N/A
+endian   LE
+hdr.csum 00000000
+guid     N/A
+intrp    N/A
+laddr    0x00000000
+lang     N/A
+machine  N/A
+maxopsz  16
+minopsz  1
+os       Windows
+cc       N/A
+pcalign  1
+rpath    N/A
+subsys   
+stripped false
+havecode true
+va       false
+static   false
+linenum  false
+lsyms    false
+canary   false
+pie      false
+relrocs  false
+nx       false
+
+[Imports]
+ nth      vaddr bind   type lib      name                      
+---------------------------------------------------------------
+   1 ---------- IMPORT FUNC KERNEL   FATALEXIT
+   3 ---------- IMPORT FUNC KERNEL   GETVERSION
+ 131 ---------- IMPORT FUNC KERNEL   GETDOSENVIRONMENT
+   5 ---------- IMPORT FUNC KERNEL   LOCALALLOC
+   6 ---------- IMPORT FUNC KERNEL   LOCALREALLOC
+   7 ---------- IMPORT FUNC KERNEL   LOCALFREE
+ 137 ---------- IMPORT FUNC KERNEL   FATALAPPEXIT
+  10 ---------- IMPORT FUNC KERNEL   LOCALSIZE
+  16 ---------- IMPORT FUNC KERNEL   GLOBALREALLOC
+  20 ---------- IMPORT FUNC KERNEL   GLOBALSIZE
+   5 ---------- IMPORT FUNC USER     INITAPP
+  23 ---------- IMPORT FUNC KERNEL   LOCKSEGMENT
+  24 ---------- IMPORT FUNC KERNEL   UNLOCKSEGMENT
+  30 ---------- IMPORT FUNC KERNEL   WAITEVENT
+  49 ---------- IMPORT FUNC KERNEL   GETMODULEFILENAME
+ 178 ---------- IMPORT FUNC KERNEL   __WINFLAGS
+  91 ---------- IMPORT FUNC KERNEL   INITTASK
+ 102 ---------- IMPORT FUNC KERNEL   DOS3CALL
+ 104 ---------- IMPORT FUNC USER     MESSAGEBEEP
+ 106 ---------- IMPORT FUNC USER     GETKEYSTATE
+ 107 ---------- IMPORT FUNC USER     DEFWINDOWPROC
+ 109 ---------- IMPORT FUNC USER     PEEKMESSAGE
+ 110 ---------- IMPORT FUNC USER     POSTMESSAGE
+ 127 ---------- IMPORT FUNC KERNEL   GETPRIVATEPROFILEINT
+ 111 ---------- IMPORT FUNC USER     SENDMESSAGE
+ 128 ---------- IMPORT FUNC KERNEL   GETPRIVATEPROFILESTRING
+ 113 ---------- IMPORT FUNC USER     TRANSLATEMESSAGE
+ 129 ---------- IMPORT FUNC KERNEL   WRITEPRIVATEPROFILESTRING
+ 114 ---------- IMPORT FUNC USER     DISPATCHMESSAGE
+ 134 ---------- IMPORT FUNC KERNEL   GETWINDOWSDIRECTORY
+ 128 ---------- IMPORT FUNC GDI      MULDIV
+   1 ---------- IMPORT FUNC GDI      SETBKCOLOR
+   2 ---------- IMPORT FUNC GDI      SETBKMODE
+ 124 ---------- IMPORT FUNC USER     UPDATEWINDOW
+ 125 ---------- IMPORT FUNC USER     INVALIDATERECT
+ 127 ---------- IMPORT FUNC USER     VALIDATERECT
+   1 ---------- IMPORT FUNC USER     MESSAGEBOX
+   9 ---------- IMPORT FUNC GDI      SETTEXTCOLOR
+ 133 ---------- IMPORT FUNC USER     GETWINDOWWORD
+ 134 ---------- IMPORT FUNC USER     SETWINDOWWORD
+   6 ---------- IMPORT FUNC USER     POSTQUITMESSAGE
+   2 ---------- IMPORT FUNC WEP4UTIL ordinal_2
+  10 ---------- IMPORT FUNC USER     SETTIMER
+  12 ---------- IMPORT FUNC USER     KILLTIMER
+   4 ---------- IMPORT FUNC WEP4UTIL ordinal_4
+   5 ---------- IMPORT FUNC WEP4UTIL ordinal_5
+  15 ---------- IMPORT FUNC USER     GETCURRENTTIME
+  18 ---------- IMPORT FUNC USER     SETCAPTURE
+  19 ---------- IMPORT FUNC USER     RELEASECAPTURE
+  29 ---------- IMPORT FUNC GDI      PATBLT
+ 150 ---------- IMPORT FUNC USER     LOADMENU
+  34 ---------- IMPORT FUNC GDI      BITBLT
+ 154 ---------- IMPORT FUNC USER     CHECKMENUITEM
+ 155 ---------- IMPORT FUNC USER     ENABLEMENUITEM
+ 411 ---------- IMPORT FUNC USER     APPENDMENU
+  31 ---------- IMPORT FUNC USER     ISICONIC
+ 159 ---------- IMPORT FUNC USER     GETSUBMENU
+ 160 ---------- IMPORT FUNC USER     DRAWMENUBAR
+  33 ---------- IMPORT FUNC USER     GETCLIENTRECT
+  51 ---------- IMPORT FUNC KERNEL   MAKEPROCINSTANCE
+ 420 ---------- IMPORT FUNC USER     _WSPRINTF
+  52 ---------- IMPORT FUNC KERNEL   FREEPROCINSTANCE
+  45 ---------- IMPORT FUNC GDI      SELECTOBJECT
+  39 ---------- IMPORT FUNC USER     BEGINPAINT
+  40 ---------- IMPORT FUNC USER     ENDPAINT
+  41 ---------- IMPORT FUNC USER     CREATEWINDOW
+  42 ---------- IMPORT FUNC USER     SHOWWINDOW
+  52 ---------- IMPORT FUNC GDI      CREATECOMPATIBLEDC
+ 173 ---------- IMPORT FUNC USER     LOADCURSOR
+ 174 ---------- IMPORT FUNC USER     LOADICON
+ 175 ---------- IMPORT FUNC USER     LOADBITMAP
+  57 ---------- IMPORT FUNC GDI      CREATEFONTINDIRECT
+ 177 ---------- IMPORT FUNC USER     LOADACCELERATORS
+ 178 ---------- IMPORT FUNC USER     TRANSLATEACCELERATOR
+  53 ---------- IMPORT FUNC USER     DESTROYWINDOW
+  57 ---------- IMPORT FUNC USER     REGISTERCLASS
+  68 ---------- IMPORT FUNC GDI      DELETEDC
+  61 ---------- IMPORT FUNC USER     SCROLLWINDOW
+  69 ---------- IMPORT FUNC GDI      DELETEOBJECT
+  66 ---------- IMPORT FUNC USER     GETDC
+  68 ---------- IMPORT FUNC USER     RELEASEDC
+  69 ---------- IMPORT FUNC USER     SETCURSOR
+  88 ---------- IMPORT FUNC KERNEL   LSTRCPY
+  80 ---------- IMPORT FUNC GDI      GETDEVICECAPS
+  82 ---------- IMPORT FUNC GDI      GETOBJECT
+  90 ---------- IMPORT FUNC KERNEL   LSTRLEN
+  78 ---------- IMPORT FUNC USER     INFLATERECT
+  87 ---------- IMPORT FUNC GDI      GETSTOCKOBJECT
+  85 ---------- IMPORT FUNC USER     DRAWTEXT
+  93 ---------- IMPORT FUNC GDI      GETTEXTMETRICS
+  87 ---------- IMPORT FUNC USER     DIALOGBOX
+ 471 ---------- IMPORT FUNC USER     LSTRCMPI
+ 483 ---------- IMPORT FUNC USER     SYSTEMPARAMETERSINFO
+ 102 ---------- IMPORT FUNC USER     ADJUSTWINDOWRECT
+  15 ---------- IMPORT FUNC KERNEL   GLOBALALLOC
+  18 ---------- IMPORT FUNC KERNEL   GLOBALLOCK
+  19 ---------- IMPORT FUNC KERNEL   GLOBALUNLOCK
+ 103 ---------- IMPORT FUNC WEP4UTIL ordinal_103
+  17 ---------- IMPORT FUNC KERNEL   GLOBALFREE
+  22 ---------- IMPORT FUNC USER     SETFOCUS
+  37 ---------- IMPORT FUNC USER     SETWINDOWTEXT
+  74 ---------- IMPORT FUNC KERNEL   OPENFILE
+1202 ---------- IMPORT FUNC WEP4UTIL ordinal_1202
+  81 ---------- IMPORT FUNC KERNEL   _LCLOSE
+  82 ---------- IMPORT FUNC KERNEL   _LREAD
+  84 ---------- IMPORT FUNC KERNEL   _LLSEEK
+  88 ---------- IMPORT FUNC USER     ENDDIALOG
+  91 ---------- IMPORT FUNC USER     GETDLGITEM
+  92 ---------- IMPORT FUNC USER     SETDLGITEMTEXT
+  93 ---------- IMPORT FUNC USER     GETDLGITEMTEXT
+ 101 ---------- IMPORT FUNC USER     SENDDLGITEMMESSAGE
+  34 ---------- IMPORT FUNC USER     ENABLEWINDOW
+  95 ---------- IMPORT FUNC USER     GETDLGITEMINT
+  35 ---------- IMPORT FUNC GDI      STRETCHBLT
+  50 ---------- IMPORT FUNC KERNEL   GETPROCADDRESS
+  95 ---------- IMPORT FUNC KERNEL   LOADLIBRARY
+  96 ---------- IMPORT FUNC KERNEL   FREELIBRARY
+ 107 ---------- IMPORT FUNC KERNEL   SETERRORMODE
+  60 ---------- IMPORT FUNC KERNEL   FINDRESOURCE
+  61 ---------- IMPORT FUNC KERNEL   LOADRESOURCE
+  62 ---------- IMPORT FUNC KERNEL   LOCKRESOURCE
+  63 ---------- IMPORT FUNC KERNEL   FREERESOURCE
+ 443 ---------- IMPORT FUNC GDI      SETDIBITSTODEVICE
+
+[Entries]
+     vaddr      paddr     hvaddr      haddr type    
+----------------------------------------------------
+0x00000a1a 0x00000a1a ---------- ---------- program
+0x0000385c 0x0000385c ---------- ---------- program
+0x00003f6a 0x00003f6a ---------- ---------- program
+---------- ---------- ---------- ---------- program
+0x0000a600 0x0000a600 ---------- ---------- program
+---------- ---------- ---------- ---------- program
+---------- ---------- ---------- ---------- program
+---------- ---------- ---------- ---------- program
+---------- ---------- ---------- ---------- program
+0x00003d4e 0x00003d4e ---------- ---------- program
+---------- ---------- ---------- ---------- program
+0x00009e16 0x00009e16 ---------- ---------- program
+0x0000a78e 0x0000a78e ---------- ---------- program
+0x0000a9c6 0x0000a9c6 ---------- ---------- program
+0x0000409a 0x0000409a ---------- ---------- program
+0x000041be 0x000041be ---------- ---------- program
+0x00003e66 0x00003e66 ---------- ---------- program
+
+[Exports]
+nth paddr vaddr bind type size lib name 
+----------------------------------------
+
+[Classes]
+address min max name super 
+---------------------------
+
+[Symbols]
+nth      paddr      vaddr bind    type         size lib name             
+-------------------------------------------------------------------------
+  0 ---------- ---------- UNKNOWN RESIDENT        0     CHIPS
+  0 ---------- ---------- UNKNOWN NON-RESIDENT    0     Chips Challenge
+  9 0x00003d4e 0x00003d4e EXPORT  NON-RESIDENT    0     BOARDWNDPROC
+  1 0x0000385c 0x0000385c EXPORT  NON-RESIDENT    0     MAINWNDPROC
+ 16 0x00003e66 0x00003e66 EXPORT  NON-RESIDENT    0     INFOWNDPROC
+ 11 0x00009e16 0x00009e16 EXPORT  NON-RESIDENT    0     PASSWORDMSGPROC
+  4 0x0000a600 0x0000a600 EXPORT  NON-RESIDENT    0     GOTOLEVELMSGPROC
+ 15 0x000041be 0x000041be EXPORT  NON-RESIDENT    0     HINTWNDPROC
+ 14 0x0000409a 0x0000409a EXPORT  NON-RESIDENT    0     INVENTORYWNDPROC
+ 13 0x0000a9c6 0x0000a9c6 EXPORT  NON-RESIDENT    0     COMPLETEMSGPROC
+ 12 0x0000a78e 0x0000a78e EXPORT  NON-RESIDENT    0     BESTTIMESMSGPROC
+  2 0x00003f6a 0x00003f6a EXPORT  NON-RESIDENT    0     COUNTERWNDPROC
+
+[Sections]
+paddr size vaddr vsize align perm name type flags 
+--------------------------------------------------
+
+[Memory]
+name size address flags mirror 
+-------------------------------
+
+[Strings]
+     paddr      vaddr len size section type  string                                                                                                                                                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+0x00004847 0x00004847   6    7         ascii "Arial
+0x00004868 0x00004868  16   17         ascii Chip's Challenge
+0x0000487a 0x0000487a  39   40         ascii Not enough system timers are available.
+0x000048a2 0x000048a2 157  158         ascii Starting a new game will begin you back at level 1, reset your score to zero, and forget the passwords to any levels you have visited.\nIs this what you want?
+0x00004940 0x00004940  52   53         ascii There is not enough memory to load Chip's Challenge.
+0x00004976 0x00004976  49   50         ascii Ooops! Don't step in the fire without fire boots!
+0x000049a8 0x000049a8  40   41         ascii Ooops! Chip can't swim without flippers!
+0x000049d2 0x000049d2  29   30         ascii Ooops! Don't touch the bombs!
+0x000049f0 0x000049f0  35   36         ascii Ooops! Watch out for moving blocks!
+0x00004a14 0x00004a14  30   31         ascii Ooops! Look out for creatures!
+0x00004a34 0x00004a34  19   20         ascii Ooops! Out of time!
+0x00004a48 0x00004a48   8    9         ascii Contents
+0x00004a52 0x00004a52  11   12         ascii How To Play
+0x00004a5e 0x00004a5e   8    9         ascii Commands
+0x00004a68 0x00004a68  11   12         ascii entpack.ini
+0x00004a74 0x00004a74  16   17         ascii Chip's Challenge
+0x00004a86 0x00004a86   4    5         ascii MIDI
+0x00004a8c 0x00004a8c   6    7         ascii Sounds
+0x00004a94 0x00004a94  13   14         ascii Highest Level
+0x00004aa2 0x00004aa2  13   14         ascii Current Level
+0x00004ab0 0x00004ab0  13   14         ascii Current Score
+0x00004abe 0x00004abe   5    6         ascii Color
+0x00004ac6 0x00004ac6  13   14         ascii KeyboardDelay
+0x00004ad4 0x00004ad4   9   10         ascii CHIPS.DAT
+0x00004ade 0x00004ade  20   21         ascii Number of Midi Files
+0x00004b36 0x00004b36  15   16         ascii PickUpToolSound
+0x00004b46 0x00004b46  13   14         ascii OpenDoorSound
+0x00004b54 0x00004b54  14   15         ascii ChipDeathSound
+0x00004b63 0x00004b63  18   19         ascii LevelCompleteSound
+0x00004b76 0x00004b76  11   12         ascii SocketSound
+0x00004b82 0x00004b82  16   17         ascii BlockedMoveSound
+0x00004b93 0x00004b93  10   11         ascii ThiefSound
+0x00004b9e 0x00004b9e  12   13         ascii SoundOnSound
+0x00004bab 0x00004bab  15   16         ascii PickUpChipSound
+0x00004bbb 0x00004bbb  11   12         ascii SwitchSound
+0x00004bc7 0x00004bc7  11   12         ascii SplashSound
+0x00004bd3 0x00004bd3   9   10         ascii BombSound
+0x00004bdd 0x00004bdd  13   14         ascii TeleportSound
+0x00004beb 0x00004beb   9   10         ascii TickSound
+0x00004bf5 0x00004bf5  20   21         ascii ChipDeathByTimeSound
+0x00004c0a 0x00004c0a   9   10         ascii blip2.wav
+0x00004c14 0x00004c14   8    9         ascii door.wav
+0x00004c1d 0x00004c1d  10   11         ascii bummer.wav
+0x00004c28 0x00004c28  10   11         ascii ditty1.wav
+0x00004c33 0x00004c33  10   11         ascii chimes.wav
+0x00004c3e 0x00004c3e   8    9         ascii oof3.wav
+0x00004c47 0x00004c47  10   11         ascii strike.wav
+0x00004c52 0x00004c52  10   11         ascii chimes.wav
+0x00004c5d 0x00004c5d  10   11         ascii click3.wav
+0x00004c68 0x00004c68   8    9         ascii pop2.wav
+0x00004c71 0x00004c71  10   11         ascii water2.wav
+0x00004c7c 0x00004c7c   8    9         ascii hit3.wav
+0x00004c85 0x00004c85  12   13         ascii teleport.wav
+0x00004c92 0x00004c92  10   11         ascii click1.wav
+0x00004c9d 0x00004c9d   8    9         ascii bell.wav
+0x00004ca6 0x00004ca6  10   11         ascii chip01.mid
+0x00004cb1 0x00004cb1  10   11         ascii chip02.mid
+0x00004cbc 0x00004cbc  10   11         ascii canyon.mid
+0x00004cc7 0x00004cc7   9   10         ascii MainClass
+0x00004cd1 0x00004cd1  10   11         ascii BoardClass
+0x00004cdc 0x00004cdc   9   10         ascii InfoClass
+0x00004ce6 0x00004ce6  12   13         ascii CounterClass
+0x00004cf3 0x00004cf3  14   15         ascii InventoryClass
+0x00004d02 0x00004d02   9   10         ascii HintClass
+0x00004d0c 0x00004d0c   9   10         ascii ChipsMenu
+0x00004d16 0x00004d16  16   17         ascii Chip's Challenge
+0x00004d27 0x00004d27   9   10         ascii MainClass
+0x00004d31 0x00004d31  10   11         ascii BoardClass
+0x00004d3c 0x00004d3c   9   10         ascii InfoClass
+0x00004d46 0x00004d46  12   13         ascii CounterClass
+0x00004d53 0x00004d53  12   13         ascii CounterClass
+0x00004d60 0x00004d60  12   13         ascii CounterClass
+0x00004d6d 0x00004d6d  14   15         ascii InventoryClass
+0x00004d7c 0x00004d7c   6    7         ascii Ooops!
+0x00004d83 0x00004d83   9   10         ascii HintClass
+0x00004d8d 0x00004d8d  10   11         ascii background
+0x00004d98 0x00004d98   5    6         ascii Arial
+0x00004d9e 0x00004d9e   4    5         ascii Helv
+0x00004da3 0x00004da3   6    7         ascii PAUSED
+0x00004daa 0x00004daa   5    6         ascii Arial
+0x00004db0 0x00004db0   4    5         ascii Helv
+0x00004db5 0x00004db5   4    5         ascii  %s 
+0x00004dba 0x00004dba  14   15         ascii  Password: %s 
+0x00004dc9 0x00004dc9   4    5         ascii  %s 
+0x00004dce 0x00004dce  14   15         ascii  Password: %s 
+0x00004de8 0x00004de8   7    8         ascii Level%d
+0x00004df0 0x00004df0   7    8         ascii Level%d
+0x00004df8 0x00004df8   9   10         ascii %s,%d,%li
+0x00004e05 0x00004e05  10   11         ascii MidiFile%d
+0x00004e12 0x00004e12   7    8         ascii Level%d
+0x00004e1a 0x00004e1a   8    9         ascii DLG_GOTO
+0x00004e23 0x00004e23  13   14         ascii DLG_BESTTIMES
+0x00004e31 0x00004e31  17   18         ascii &Ignore Passwords
+0x00004e43 0x00004e43   9   10         ascii ChipsMenu
+0x00004e50 0x00004e50   7    8         ascii infownd
+0x00004e58 0x00004e58   8    9         ascii Hint: %s
+0x00004e61 0x00004e61   5    6         ascii Arial
+0x00004e67 0x00004e67   4    5         ascii Helv
+0x0000510c 0x0000510c  88   89         ascii You seem to be having trouble with this level.\nWould you like to skip to the next level?
+0x00005166 0x00005166  39   40         ascii Corrupt or inaccessible CHIPS.DAT file.
+0x00005193 0x00005193   6    7         ascii %s%s%s
+0x0000519a 0x0000519a  39   40         ascii Please enter the password for level %d:
+0x000051c2 0x000051c2  40   41         ascii Sorry, "%s" is not the correct password.
+0x000051eb 0x000051eb  26   27         ascii You must enter a password.
+0x00005206 0x00005206  12   13         ascii DLG_PASSWORD
+0x0000521a 0x0000521a   7    8         ascii obj32_4
+0x00005222 0x00005222   8    9         ascii obj32_4E
+0x0000522b 0x0000522b   7    8         ascii obj32_1
+0x00005236 0x00005236  39   40         ascii You must enter a level and/or password.
+0x0000525e 0x0000525e  32   33         ascii You must enter a valid password.
+0x00005280 0x00005280  33   34         ascii That is not a valid level number.
+0x000052a2 0x000052a2  20   21         ascii No levels completed.
+0x000052b7 0x000052b7  33   34         ascii Level %d:  %d seconds, %li points
+0x000052d9 0x000052d9  24   25         ascii Level %d:  not completed
+0x000052f5 0x000052f5  30   31         ascii You have completed %d level%s.
+0x00005314 0x00005314  31   32         ascii Your total score is %li points.
+0x00005334 0x00005334  18   19         ascii Yowser! First Try!
+0x00005347 0x00005347  14   15         ascii Go Bit Buster!
+0x00005356 0x00005356  20   21         ascii Finished! Good Work!
+0x0000536b 0x0000536b  20   21         ascii At last! You did it!
+0x00005383 0x00005383  15   16         ascii Time Bonus:  %d
+0x00005393 0x00005393  17   18         ascii Level Bonus:  %li
+0x000053a5 0x000053a5  17   18         ascii Level Score:  %li
+0x000053b7 0x000053b7  50   51         ascii You have established a time record for this level!
+0x000053ed 0x000053ed  49   50         ascii You beat the previous time record by %d second%s!
+0x00005422 0x00005422  54   55         ascii You increased your score on this level by %li point%s!
+0x00005459 0x00005459  17   18         ascii Total Score:  %li
+0x0000546e 0x0000546e  57   58         ascii Great Job, Chip!\nYou did it!  You finished the challenge!
+0x000054a8 0x000054a8 154  155         ascii Melinda herself offers Chip membership in the exclusive Bit Busters computer club, and gives him access to the club's computer system.  Chip is in heaven!
+0x00005544 0x00005544 381  382         ascii You completed %d levels, and your total score for the challenge is %li points.\n\nYou can still improve your score, by completing levels that you skipped, and getting better times on each level.  When you replay a level, if your new score is better than your old, your score will be adjusted by the difference.  Select Best Times from the Game menu to see your scores for each level.
+0x000056d6 0x000056d6 129  130         ascii Picking up chips is what the challenge is all about. But on the ice, Chip gets chapped and feels like a chump instead of a champ.
+0x00005758 0x00005758 114  115         ascii Chip hits the ice and decides to chill out. Then he runs into a fake wall and turns the maze into a thrash-a-thon!
+0x000057cb 0x000057cb 121  122         ascii Chip is halfway through the world's hardest puzzle. If he succeeds, maybe the kids will stop calling him computer breath!
+0x00005845 0x00005845 123  124         ascii Chip used to spend his time programming computer games and making models. But that was just practice for this brain-buster!
+0x000058c1 0x000058c1 120  121         ascii 'I can do it! I know I can!' Chip thinks as the going gets tougher. Besides, Melinda the Mental Marvel waits at the end!
+0x0000593a 0x0000593a 114  115         ascii Besides being an angel on earth, Melinda is the top scorer in the Challenge--and the president of the Bit Busters.
+0x000059ad 0x000059ad 125  126         ascii Chip can't wait to join the Bit Busters! The club's already figured out the school's password and accessed everyone's grades!
+0x00005a2b 0x00005a2b 101  102         ascii If Chip's grades aren't as good as Melinda's, maybe she'll come over to his house and help him study!
+0x00005a91 0x00005a91 131  132         ascii 'I've made it this far,' Chip thinks. 'Totally fair, with my mega-brain.' Then he starts the next maze. 'Totally unfair!' he yelps.
+0x00005b15 0x00005b15  60   61         ascii Groov-u-loids! Chip makes it almost to the end. He's stoked!
+0x00005b52 0x00005b52   7    8         ascii chipend
+0x00005b5a 0x00005b5a   7    8         ascii chipend
+0x00005b62 0x00005b62  12   13         ascii DLG_COMPLETE
+0x00005b70 0x00005b70  23   24         ascii MIDI Error on file %s: 
+0x00005b88 0x00005b88  59   60         ascii None of the MIDI files specified in entpack.ini were found.
+0x00005bde 0x00005bde  12   13         ascii MMSYSTEM.DLL
+0x00005beb 0x00005beb  12   13         ascii sndPlaySound
+0x00005bf8 0x00005bf8  14   15         ascii mciSendCommand
+0x00005c07 0x00005c07  17   18         ascii mciGetErrorString
+0x00005c19 0x00005c19  17   18         ascii midiOutGetNumDevs
+0x00005c2b 0x00005c2b  17   18         ascii waveOutGetNumDevs
+0x00005c3d 0x00005c3d   9   10         ascii sequencer
+0x00005c49 0x00005c49  43   44         ascii The MIDI Mapper is not available. Continue?
+0x00005c75 0x00005c75  13   14         ascii Unknown Error
+0x00005c9c 0x00005c9c  13   14         ascii _C_FILE_INFO=
+0x00005d22 0x00005d22   8    9         ascii <<NMSG>>
+0x00005d2c 0x00005d2c  25   26         ascii R6000\r\n- stack overflow\r\n
+0x00005d48 0x00005d48  30   31         ascii R6003\r\n- integer divide by 0\r\n
+0x00005d69 0x00005d69  43   44         ascii R6009\r\n- not enough space for environment\r\n
+0x00005d97 0x00005d97  32   33         ascii R6018\r\n- unexpected heap error\r\n
+0x00005dba 0x00005dba  36   37         ascii R6020\r\n- unexpected QuickWin error\r\n
+0x00005de1 0x00005de1  41   42         ascii R6008\r\n- not enough space for arguments\r\n
+0x00005e0d 0x00005e0d  28   29         ascii R6021\r\n- no main procedure\r\n
+0x00005e31 0x00005e31  15   16         ascii run-time error 
+0x00005e43 0x00005e43  44   45         ascii R6002\r\n- floating-point support not loaded\r\n
+
+EOF
+RUN

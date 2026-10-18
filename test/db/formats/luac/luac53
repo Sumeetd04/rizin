@@ -1,0 +1,69 @@
+NAME=LUAC: none53.luac
+FILE=bins/luac/none53.luac
+CMDS=<<EOF
+i~guid,machine
+iS~none
+ie~program
+EOF
+EXPECT=<<EOF
+guid     /home/heersin/blackhole/lua53_src/none.lua
+machine  Lua 5.3 VM
+0x00000000 0x00000000 ---------- ---------- program
+EOF
+RUN
+
+NAME=LUAC: big53.luac
+FILE=bins/luac/big53.luac
+CMDS=<<EOF
+iS~code
+is~pizza
+is~proto
+pd 10 >/dev/null
+iz~print?
+EOF
+EXPECT=<<EOF
+0x00000060 0x444 0x00000000 0x444   0x0 -r-x fcn.00000000.code          
+0x000007ed  0x34 0x00001000  0x34   0x0 -r-x fcn.00001000.code          
+0x000008a5   0xc 0x00002000   0xc   0x0 -r-x fcn.00002000.code          
+0x000008cd  0x10 0x00003000  0x10   0x0 -r-x fcn.00003000.code          
+0x00000945  0x34 0x00004000  0x34   0x0 -r-x fcn.00004000.code          
+0x00000a37   0xc 0x00005000   0xc   0x0 -r-x fcn.00005000.code          
+0x00000a81   0xc 0x00006000   0xc   0x0 -r-x fcn.00006000.code          
+0x00000acb  0x18 0x00007000  0x18   0x0 -r-x fcn.00007000.code          
+0x00000b3f  0x18 0x00008000  0x18   0x0 -r-x fcn.00008000.code          
+0x00000bb3  0x10 0x00009000  0x10   0x0 -r-x fcn.00009000.code          
+0x00000c19  0x4c 0x0000a000  0x4c   0x0 -r-x fcn.0000a000.code          
+0x00000d01  0x28 0x0000b000  0x28   0x0 -r-x fcn.0000b000.code          
+0x00000db9  0x18 0x0000c000  0x18   0x0 -r-x fcn.0000c000.code          
+0x00000e3b  0x2c 0x0000d000  0x2c   0x0 -r-x fcn.0000d000.code          
+0x00000ee3  0x24 0x0000e000  0x24   0x0 -r-x fcn.0000e000.code          
+  0 0x000007ed 0x00001000 GLOBAL FUNC   52     proto1
+  0 0x000008a5 0x00002000 GLOBAL FUNC   12     proto2
+  0 0x000008cd 0x00003000 GLOBAL FUNC   16     proto3
+  0 0x00000945 0x00004000 GLOBAL FUNC   52     proto4
+  0 0x00000a37 0x00005000 GLOBAL FUNC   12     proto5
+  0 0x00000a81 0x00006000 GLOBAL FUNC   12     proto6
+  0 0x00000acb 0x00007000 GLOBAL FUNC   24     proto7
+  0 0x00000b3f 0x00008000 GLOBAL FUNC   24     proto8
+  0 0x00000bb3 0x00009000 GLOBAL FUNC   16     proto9
+  0 0x00000c19 0x0000a000 GLOBAL FUNC   76     proto10
+  0 0x00000d01 0x0000b000 GLOBAL FUNC   40     proto11
+  0 0x00000db9 0x0000c000 GLOBAL FUNC   24     proto12
+  0 0x00000e3b 0x0000d000 GLOBAL FUNC   44     proto13
+  0 0x00000ee3 0x0000e000 GLOBAL FUNC   36     proto14
+7
+EOF
+RUN
+
+NAME=LUAC: broken file
+FILE=bins/luac/random53.luac
+CMDS=<<EOF
+EOF
+EXPECT=
+REGEXP_FILTER_ERR=<<EOF
+ERROR: file truncated, offset: .+
+ERROR: Invalid luac file
+EOF
+EXPECT_ERR=<<EOF
+EOF
+RUN

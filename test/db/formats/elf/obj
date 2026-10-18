@@ -1,0 +1,26 @@
+NAME=obj entry
+FILE=bins/elf/analysis/test.obj
+CMDS=ie~addr
+EXPECT=<<EOF
+vaddr paddr hvaddr haddr type 
+EOF
+EXPECT_ERR=
+RUN
+
+NAME=obj main address
+FILE=bins/elf/analysis/test.obj
+CMDS=%v sym.main
+EXPECT=<<EOF
+0x8000050
+EOF
+RUN
+
+NAME=obj main
+FILE=bins/elf/analysis/test.obj
+CMDS=pi 3@ sym.main
+EXPECT=<<EOF
+push rbp
+mov rbp, rsp
+call sym.test
+EOF
+RUN

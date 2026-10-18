@@ -1,0 +1,19 @@
+NAME=SPC700 analysis
+FILE=bins/spc700/bin.spc
+CMDS=<<EOF
+iI~machine[1]
+echo ---
+iS
+echo ---
+oml
+EOF
+EXPECT=<<EOF
+SPC700
+---
+     paddr    size      vaddr   vsize align perm name type flags 
+-----------------------------------------------------------------
+0x00000100 0x10000 0x00000000 0x10000   0x0 -r-- RAM       
+---
+ 1 fd: 3 +0x00000100 0x00000000 * 0x0000ffff r-- fmap.RAM
+EOF
+RUN

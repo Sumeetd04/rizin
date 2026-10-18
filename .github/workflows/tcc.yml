@@ -1,0 +1,111 @@
+name: TinyCC build
+
+on:
+  push:
+    paths:
+    - '**.c'
+    - '**.h'
+    - '**.in'
+    - '**.inc'
+    - '**/meson.build'
+    - 'subprojects/**'
+    - 'test/**'
+    - '.github/workflows/tcc.yml'
+    branches:
+    - 'dev'
+    - 'stable'
+    - 'container-*'
+  schedule:
+    - cron: '0 18 * * 1,3,5' # Three-weekly at 18:00 UTC on Monday, Wednesday, and Friday
+  pull_request:
+    paths:
+    - '**.c'
+    - '**.h'
+    - '**.in'
+    - '**.inc'
+    - '**/meson.build'
+    - 'subprojects/**'
+    - 'test/**'
+    - '.github/workflows/tcc.yml'
+    branches:
+    - 'dev'
+    - 'stable'
+    - 'release-*'
+
+# Automatically cancel any previous workflow on new push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ubuntu-tcc-test
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Checkout TinyCC repository
+      run: |
+          git clone https://github.com/tinycc/tinycc
+          cd tinycc
+          #git checkout mob
+          # Well-tested commit
+          git checkout 5b28165fbf8549c5d92893339e4f6b6181316894
+          chmod +x ./configure
+
+    - name: Compiling and installing TinyCC
+      working-directory: tinycc
+      run: |
+          ./configure --prefix=/usr
+          make
+          sudo make install
+
+    - name: Install dependencies
+      run: |
+          sudo apt update
+          sudo apt-get --assume-yes install python3-wheel python3-setuptools pkgconf libcurl4-openssl-dev libarchive-dev
+          sudo python3 -m pip install ninja
+
+    - name: Checkout Muon repository
+      run: |
+          git clone https://git.sr.ht/~lattis/muon
+
+    - name: Compiling and installing Muon
+      working-directory: muon
+      run: |
+          ./bootstrap.sh build
+          build/muon-bootstrap setup build
+          ninja -C build
+          sudo cp build/muon /usr/bin/muon
+
+    - name: Checkout our Testsuite Binaries
+      uses: actions/checkout@v6
+      with:
+          repository: rizinorg/rizin-testbins
+          path: test/bins
+
+    - name: Muon setup
+      env:
+          CC: tcc
+      # Muon defaults to static libraries, meson to shared ones. Ask for shared
+      # explicitly so this job keeps testing the same layout as every other one.
+      run: muon setup -Dprefix=/usr -Ddefault_library=shared build
+    - name: Muon compile and install
+      run: ninja -C build && sudo muon -C build install
+    - name: Run unit tests
+      run: muon -C build test
+
+    - name: Install test dependencies
+      run: |
+          python3 -m pip install --user 'git+https://github.com/rizinorg/rz-pipe#egg=rzpipe&subdirectory=python' psutil requests
+          sudo apt-get update
+          sudo apt-get --assume-yes install libc6 libc6-i386 debuginfod gdbserver
+
+    - name: Run tests
+      env:
+        PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig
+      run: |
+        rizin -v
+        rz-test -v
+        cd test
+        rz-test -L -o results.json

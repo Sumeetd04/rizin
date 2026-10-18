@@ -1,0 +1,92 @@
+# Doxygen configuration for the Rizin API documentation.
+#
+# Only the tags that differ from the Doxygen defaults are listed, so that a
+# Doxygen upgrade does not require regenerating the whole file. Run
+# `python3 sys/doxygen.py` (or `ninja -C build doc`) to build the documentation
+# with the Doxygen Awesome theme; plain `doxygen` still works but falls back to
+# the stock Doxygen theme.
+
+#---------------------------------------------------------------------------
+# Project
+#---------------------------------------------------------------------------
+
+PROJECT_NAME           = Rizin
+PROJECT_BRIEF          = "UNIX-like reverse engineering framework and command-line toolset"
+PROJECT_LOGO           = doc/img/rizin.svg
+OUTPUT_DIRECTORY       = doc/doxygen
+
+#---------------------------------------------------------------------------
+# Input
+#---------------------------------------------------------------------------
+
+# Only the libraries are part of the public API, the CLI tools are not.
+INPUT                  = librz
+FILE_PATTERNS          = *.c \
+                         *.h \
+                         *.inc \
+                         *.md
+RECURSIVE              = YES
+
+# Vendored third party code carries its own documentation conventions.
+EXCLUDE                = librz/util/sdb/src
+
+EXAMPLE_PATH           = test/integration
+IMAGE_PATH             = doc/img
+USE_MDFILE_AS_MAINPAGE = librz/README.md
+
+#---------------------------------------------------------------------------
+# Parsing
+#---------------------------------------------------------------------------
+
+OPTIMIZE_OUTPUT_FOR_C  = YES
+TAB_SIZE               = 8
+
+# Drop the annotation macros so that they do not end up in the signatures.
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = RZ_API= \
+                         RZ_IPI= \
+                         RZ_IN= \
+                         RZ_OUT= \
+                         RZ_INOUT= \
+                         RZ_OWN= \
+                         RZ_BORROW= \
+                         RZ_NONNULL= \
+                         RZ_NULLABLE= \
+                         RZ_DEPRECATE= \
+                         __attribute__(x)= \
+                         MACH0_(x)=x \
+                         PE_(x)=x \
+                         HtName_(x)=x \
+                         Ht_(x)=x \
+                         HT_(x)=x
+
+#---------------------------------------------------------------------------
+# Diagnostics
+#---------------------------------------------------------------------------
+
+# Most of the code base is still undocumented, only report broken documentation
+# so that the build can be kept warning free.
+WARN_IF_UNDOCUMENTED   = NO
+
+# Left permissive on purpose: newer Doxygen releases keep tightening what counts
+# as a broken reference. CI pins a version and turns warnings into errors with
+# `sys/doxygen.py --warnings-as-errors` instead.
+WARN_AS_ERROR          = NO
+
+#---------------------------------------------------------------------------
+# Output
+#---------------------------------------------------------------------------
+
+GENERATE_LATEX         = NO
+
+# Set explicitly: the default flipped between Doxygen releases and generating
+# the graphs needs Graphviz plus a multiple of the time the docs themselves take.
+HAVE_DOT               = NO
+
+# Doxygen Awesome requires a treeview sidebar and its own color handling.
+GENERATE_TREEVIEW      = YES
+HTML_COLORSTYLE        = LIGHT
+
+# Render formulas client side, so that building the docs needs no LaTeX.
+USE_MATHJAX            = YES

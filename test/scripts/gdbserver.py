@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+
+r"""
+This script launches gdbserver in a subprocess and waits until it's ready to receive
+a new connection since it's not possible to know if gdbserver is ready to connect
+to with `oodf` after executing it as a background task using `& !gdbserver ...`.
+Example usage in a test:
+
+  !scripts/gdbserver.py --port PORT --binary bins/elf/analysis/calls_x64
+
+It's important to note that PORT has to be unique for each test since all tests
+run in parallel and may attempt to open the same port at the same time.
+
+"""
+
+import argparse
+import os
+import subprocess
+
+
+def execute(cmd):
+    with subprocess.Popen(
+        cmd, stderr=subprocess.PIPE, universal_newlines=True
+    ) as popen:
+        for stderr_line in iter(popen.stderr.readline, ""):
+            yield stderr_line
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Run gdbserver in a new process with the given arguments and exit "
+        "once gdbserver is ready for new connections"
+    )
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", default="1234")
+    parser.add_argument("--binary", default="")
+    parser.add_argument(
+        "--output",
+        default=False,
+        action="store_true",
+        help="print stdout output from gdbserver",
+    )
+    parser.add_argument(
+        "--multi",
+        default=False,
+        action="store_true",
+        help="start gdbserver in multi-process (extended-remote) mode",
+    )
+    args = parser.parse_args()
+
+    while True:
+        cmd = ["gdbserver"]
+        if args.multi:
+            cmd.append("--multi")  # --multi comes before HOST:PORT
+        cmd.append(f"{args.host}:{args.port}")
+        if args.binary:
+            cmd.append(args.binary)
+        for output in execute(cmd):
+            if args.output:
+                print(output)
+            # Exit once gdbserver is ready for connections
+            if "Listening on port" in output:
+                os._exit(0)  # pylint: disable=protected-access
+            # gdbserver might fail to start if the port is taken
+            if "Can't bind address" in output:
+                print(output)
+                os._exit(1)  # pylint: disable=protected-access
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,69 @@
+NAME=PE: corkami dll.dll - DYNAMIC_BASE/ASLR disabled
+FILE==
+CMDS=!rz-bin -I bins/pe/dll.dll | grep "pie      false"
+EXPECT=<<EOF
+pie      false
+EOF
+RUN
+
+NAME=PE: corkami aslr.dll - DYNAMIC_BASE/ASLR enabled
+FILE==
+CMDS=!rz-bin -I bins/pe/aslr.dll | grep pie | grep true
+EXPECT=<<EOF
+pie      true
+EOF
+RUN
+
+NAME=PE: corkami aslr.dll
+FILE=bins/pe/aslr.dll
+CMDS=<<EOF
+s
+echo ---
+pi 1
+echo ---
+iI
+EOF
+EXPECT=<<EOF
+0x1001000
+---
+mov eax, 0x01
+---
+arch     x86
+cpu      N/A
+features N/A
+baddr    0x01000000
+binsz    0x00000400
+bintype  pe
+bits     32
+class    PE32
+cmp.csum 0x0000c4c8
+compiled Thu Jan  1 00:00:00 1970 UTC
+compiler N/A
+dbg_file N/A
+endian   LE
+hdr.csum 0x00000000
+guid     N/A
+intrp    N/A
+laddr    0x00000000
+lang     c
+machine  i386
+maxopsz  16
+minopsz  1
+os       windows
+overlay  false
+cc       cdecl
+pcalign  1
+rpath    N/A
+subsys   Windows CUI
+stripped false
+havecode true
+va       true
+static   true
+linenum  false
+lsyms    false
+canary   true
+pie      true
+relrocs  false
+nx       false
+EOF
+RUN

@@ -1,0 +1,54 @@
+NAME=p= 0
+FILE=bins/elf/analysis/hello-arm32
+CMDS=<<EOF
+p= 0
+p=d 0
+p=e 0
+p=p 0
+p2 0
+p8 0
+pB 0
+px 0
+px/ 0
+pxa 0
+pxA 0
+pxb 0
+pxd 0
+pxdh 0
+pxdw 0
+pxe 0
+pxh 0
+pxH 0
+pxl 0
+pxo 0
+pxq 0
+pxQ 0
+pxr 0
+pxs 0
+pxw 0
+pxW 0
+pd 0
+pD 0
+pda 0
+pdj 0
+pdq 0
+pdl 0
+pdt 0
+pi 0
+pdq 0
+pie 0
+pI 0
+pDq 0
+pr 0
+prx 0
+prg 0
+pk 0
+pK 0
+pu 0
+puw 0
+aa
+pdr 0
+pdf 0
+EOF
+EXPECT=
+RUN

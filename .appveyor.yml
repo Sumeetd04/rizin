@@ -1,0 +1,138 @@
+# Version format
+version: 'git.{build}'
+
+# Skip Github tags
+skip_tags: true
+
+
+# Environment variables
+environment:
+  VSVARSALLPATH2017: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
+  VSVARSALLPATH2019: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat'
+  VSVARSALLPATH2026: 'C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat'
+
+  matrix:
+    # VS2017 64
+    - builder: vs2017_64
+      PYTHON: 'C:\\Python310'
+      INNO_SETUP: 'C:\\Program Files (x86)\\Inno Setup 5'
+      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
+      RUN_TESTS: false
+      TEST_INCLUDE_HEADERS_CPP: false
+    # VS2026 64
+    - builder: vs2026_64
+      PYTHON: 'C:\\Python314-x64'
+      INNO_SETUP: 'C:\\Program Files (x86)\\Inno Setup 6'
+      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2026
+      RUN_TESTS: true
+      TEST_INCLUDE_HEADERS_CPP: true
+    # VS2017 64 (Dynamic linking)
+    - builder: vs2017_64_dyn
+      PYTHON: 'C:\\Python310'
+      INNO_SETUP: 'C:\\Program Files (x86)\\Inno Setup 5'
+      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
+      RUN_TESTS: false
+      TEST_INCLUDE_HEADERS_CPP: false
+    # Clang-cl 64 (Dynamic linking)
+    - builder: clang_cl_64_dyn
+      PYTHON: 'C:\\Python314'
+      INNO_SETUP: 'C:\\Program Files (x86)\\Inno Setup 6'
+      APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2026
+      RUN_TESTS: true
+      TEST_INCLUDE_HEADERS_CPP: false
+
+only_commits:
+  files:
+    - '**/*.c'
+    - '**/*.h'
+    - '**/*.in'
+    - '**/*.inc'
+    - '**/meson.build'
+    - 'subprojects/'
+    - 'test/'
+    - '.appveyor.yml'
+
+# Init
+init:
+  # Build dependent custom commands
+  - cmd: "%init_command%"
+
+# Required software for building
+install:
+  # Install Python 3.10
+  - cmd: if "%APPVEYOR_BUILD_WORKER_IMAGE%" == "Visual Studio 2017" ( choco install python310 )
+  # Update environment variables
+  - ps: $env:RZ_VERSION = (& (Join-Path $env:PYTHON python.exe) sys\\version.py )
+  - ps: $env:DIST_FOLDER = "rizin-$env:builder-$env:RZ_VERSION"
+  - ps: $env:ARTIFACT_ZIP = "$env:DIST_FOLDER.zip"
+  # Download required packages
+  - cmd: if "%APPVEYOR_BUILD_WORKER_IMAGE%" == "Visual Studio 2017" ( %PYTHON%\python -m pip install --upgrade pip && %PYTHON%\python -m pip install --upgrade certifi pip-system-certs )
+  - cmd: "%PYTHON%\\python -m pip install meson ninja PyYAML tomli"
+  - cmd: if "%APPVEYOR_BUILD_WORKER_IMAGE%" == "Visual Studio 2017" ( %PYTHON%\python -m pip install meson==1.10.2 )
+
+# Build scripts
+build_script:
+  - appveyor AddMessage "Compiling rizin %RZ_VERSION% (%builder%)"
+
+  # Meson patched to work around git network issues
+  - cmd: if "%APPVEYOR_BUILD_WORKER_IMAGE%" == "Visual Studio 2017" ( patch %PYTHON%\Lib\site-packages\mesonbuild\utils\universal.py patches\meson-git-retry.patch )
+
+  - cmd: if %builder% == vs2017_64 ( set "PATH=C:\mingw\bin;C:\mingw\msys\1.0\bin;%PYTHON%;%PATH%" && call "%VSVARSALLPATH2017%" x64 && %PYTHON%\Scripts\meson setup --buildtype=release --prefix="%CD%\%DIST_FOLDER%" --default-library=static -Db_vscrt=static_from_buildtype build && %PYTHON%\Scripts\ninja -C build install && 7z a %ARTIFACT_ZIP% %DIST_FOLDER% )
+
+  - cmd: if %builder% == vs2026_64 ( choco install mingw && refreshenv && set "PATH=C:\mingw\bin;C:\mingw\msys\1.0\bin;%PYTHON%;%PATH%" && call "%VSVARSALLPATH2026%" x64 && %PYTHON%\Scripts\meson setup --buildtype=release --prefix="%CD%\%DIST_FOLDER%" --default-library=static -Db_vscrt=static_from_buildtype build && %PYTHON%\Scripts\ninja -C build install && 7z a %ARTIFACT_ZIP% %DIST_FOLDER% )
+
+  - cmd: if %builder% == vs2017_64_dyn ( set "PATH=C:\mingw\bin;C:\mingw\msys\1.0\bin;%PYTHON%;%PATH%" && call "%VSVARSALLPATH2017%" x64 && %PYTHON%\Scripts\meson setup --buildtype=release --prefix="%CD%\%DIST_FOLDER%" build && %PYTHON%\Scripts\ninja -C build install && 7z a %ARTIFACT_ZIP% %DIST_FOLDER% )
+
+  - cmd: if %builder% == clang_cl_64_dyn ( set "PATH=C:\mingw\bin;C:\mingw\msys\1.0\bin;%PYTHON%;%PATH%" && call "%VSVARSALLPATH2026%" x64 && set CC=clang-cl && %PYTHON%\Scripts\meson setup --buildtype=release --prefix="%CD%\%DIST_FOLDER%" build && %PYTHON%\Scripts\ninja -C build install && 7z a %ARTIFACT_ZIP% %DIST_FOLDER% )
+
+for:
+  # Run tests only conditionally
+  - matrix:
+      only:
+        - RUN_TESTS: true
+
+    test_script:
+      - if "%APPVEYOR_BUILD_WORKER_IMAGE%" == "Visual Studio 2017" ( call "%VSVARSALLPATH2017%" x64 )
+      - if %builder% == vs2026_64 ( call "%VSVARSALLPATH2026%" x64 )
+      - if %builder% == clang_cl_64_dyn ( call "%VSVARSALLPATH2026%" x64 )
+      # Windows Python ships no python3.exe, so `python3` spawned by the tests would
+      # resolve to another interpreter on PATH that has no rzpipe installed
+      - copy /y "%PYTHON%\python.exe" "%PYTHON%\python3.exe"
+      - set PATH=%APPVEYOR_BUILD_FOLDER%\%DIST_FOLDER%\bin;%PYTHON%;C:\msys64\mingw64\bin;%PATH%
+      - echo %PATH%
+      - where rizin
+      - where python3
+      - rizin -v
+      - '%PYTHON%\\python -m pip install "git+https://github.com/rizinorg/rz-pipe#egg=rzpipe&subdirectory=python"'
+      - "%PYTHON%\\python -m pip install requests"
+      - cd test
+      - git clone -q --depth 1 -c core.symlinks=true https://github.com/rizinorg/rizin-testbins bins
+      - cd ..
+      - "%PYTHON%\\Scripts\\meson test -C build -t 10 --print-errorlogs"
+      - cd test
+      - rz-test -o results.json -e db\esil -L db
+      - cd ..
+
+  # Include header files from C++
+  - matrix:
+      only:
+        - TEST_INCLUDE_HEADERS_CPP: true
+
+    test_script:
+      - if "%APPVEYOR_BUILD_WORKER_IMAGE%" == "Visual Studio 2017" ( call "%VSVARSALLPATH2017%" x64 )
+      - if %builder% == vs2026_64 ( call "%VSVARSALLPATH2026%" x64 )
+      - if %builder% == clang_cl_64_dyn ( call "%VSVARSALLPATH2026%" x64 )
+      - set PATH=%APPVEYOR_BUILD_FOLDER%\%DIST_FOLDER%\bin;%PYTHON%;C:\msys64\mingw64\bin;%PATH%
+      - echo %PATH%
+      - where rizin
+      - rizin -v
+      - "%PYTHON%\\Scripts\\meson setup build-cpp-test ./test/unit/cpp"
+      - "%PYTHON%\\Scripts\\meson compile -C build-cpp-test"
+      - "%PYTHON%\\Scripts\\meson test -C build-cpp-test --print-errorlogs"
+
+# Artifacts
+artifacts:
+  # Binaries
+  - path: "%ARTIFACT_ZIP%"
+  # Test results
+  - path: test/results.json
