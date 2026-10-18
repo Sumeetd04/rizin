@@ -61,12 +61,92 @@ static const char *config_exclude_load[] = {
 	"ghidra.sleighhome", // also important for Cutter
 	NULL
 };
+/*
+ * SDB Format:
+ * /macros
+ *   <macro name>={"args":[<str>,...],"code":<str>}
+ */
+
+static bool macro_save_cb(RzCmd *cmd, const RzCmdMacro *macro, void *user) {
+	Sdb *db = user;
+	PJ *j = pj_new();
+	if (!j) {
+		return false;
+	}
+	pj_o(j);
+	pj_ka(j, "args");
+	for (size_t i = 0; i < macro->nargs; i++) {
+		pj_s(j, macro->args[i]);
+	}
+	pj_end(j);
+	pj_ks(j, "code", macro->code);
+	pj_end(j);
+	sdb_set(db, macro->name, pj_string(j));
+	pj_free(j);
+	return true;
+}
+
+static void macros_save(Sdb *db, RzCore *core) {
+	rz_cmd_macro_foreach(core->rcmd, macro_save_cb, db);
+}
+
+static bool macro_load_cb(void *user, const SdbKv *kv) {
+	RzCore *core = user;
+	char *json_str = sdbkv_dup_value(kv);
+	if (!json_str) {
+		return true;
+	}
+	RzJson *json = rz_json_parse(json_str);
+	if (!json || json->type != RZ_JSON_OBJECT) {
+		rz_json_free(json);
+		free(json_str);
+		return false;
+	}
+	bool ok = false;
+	const RzJson *code = rz_json_get(json, "code");
+	const RzJson *args = rz_json_get(json, "args");
+	if (code && code->type == RZ_JSON_STRING && args && args->type == RZ_JSON_ARRAY) {
+		const char **argv = RZ_NEWS0(const char *, args->children.count + 1);
+		if (argv) {
+			size_t n = 0;
+			bool args_ok = true;
+			for (const RzJson *a = args->children.first; a; a = a->next) {
+				if (a->type != RZ_JSON_STRING) {
+					args_ok = false;
+					break;
+				}
+				argv[n++] = a->str_value;
+			}
+			if (args_ok) {
+				rz_cmd_macro_rm(core->rcmd, sdbkv_key(kv)); // replace if it already exists
+				ok = rz_cmd_macro_add(core->rcmd, sdbkv_key(kv), argv, code->str_value);
+			}
+			free(argv);
+		}
+	}
+	rz_json_free(json);
+	free(json_str);
+	return ok;
+}
+
+static bool macros_load(Sdb *db, RzCore *core, RzSerializeResultInfo *res) {
+	Sdb *macros_db = sdb_ns(db, "macros", false);
+	if (!macros_db) {
+		return true; // old project without macros, not an error
+	}
+	if (!sdb_foreach(macros_db, macro_load_cb, core)) {
+		RZ_SERIALIZE_ERR(res, "failed to parse macros");
+		return false;
+	}
+	return true;
+}
 
 RZ_API void rz_serialize_core_save(RZ_NONNULL Sdb *db, RZ_NONNULL RzCore *core, RZ_NULLABLE const char *prj_file) {
 	file_save(sdb_ns(db, "file", true), core, prj_file);
 	rz_serialize_config_save(sdb_ns(db, "config", true), core->config, config_exclude_save);
 	rz_serialize_flag_save(sdb_ns(db, "flags", true), core->flags);
 	rz_serialize_mark_save(sdb_ns(db, "marks", true), core->marks);
+	macros_save(sdb_ns(db, "macros", true), core);
 	rz_serialize_analysis_save(sdb_ns(db, "analysis", true), core->analysis);
 	rz_serialize_debug_save(sdb_ns(db, "debug", true), core->dbg);
 	rz_serialize_core_seek_save(sdb_ns(db, "seek", true), core);
@@ -95,6 +175,9 @@ RZ_API bool rz_serialize_core_load(RZ_NONNULL Sdb *db, RZ_NONNULL RzCore *core, 
 	SUB("config", rz_serialize_config_load(subdb, core->config, config_exclude_load));
 	SUB("flags", rz_serialize_flag_load(subdb, core->flags, res));
 	SUB("marks", rz_serialize_mark_load(subdb, core->marks, res));
+	if (!macros_load(db, core, res)) {
+		return false;
+	}
 	SUB("analysis", rz_serialize_analysis_load(subdb, core->analysis, res));
 	SUB("debug", rz_serialize_debug_load(subdb, core->dbg, res));
 	SUB("seek", rz_serialize_core_seek_load(subdb, core, res));
