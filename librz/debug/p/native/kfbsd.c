@@ -200,31 +200,44 @@ RZ_API ut64 rz_debug_get_tls(RZ_NONNULL RzDebug *dbg, int tid) {
 }
 
 static int bsd_reg_read(RzDebug *dbg, int type, ut8 *buf, int size) {
-	int showfpu = false;
 	int pid = dbg->pid;
 	int ret;
 	if (type < -1) {
-		showfpu = true; // hack for debugging
 		type = -type;
 	}
 	switch (type) {
 	case RZ_REG_TYPE_DRX:
 #if __i386__ || __x86_64__
 	{
-		// TODO
 		struct dbreg dbr;
 		ret = ptrace(PT_GETDBREGS, pid, (caddr_t)&dbr, sizeof(dbr));
-		if (ret != 0)
+		if (ret != 0) {
 			return false;
-		// XXX: maybe the register map is not correct, must review
+		}
+		if (sizeof(dbr) < (size_t)size) {
+			size = sizeof(dbr);
+		}
+		memcpy(buf, &dbr, size);
+		return sizeof(dbr);
 	}
 #endif
 		return true;
-		break;
 	case RZ_REG_TYPE_FPU:
 	case RZ_REG_TYPE_MMX:
-	case RZ_REG_TYPE_XMM:
-		break;
+	case RZ_REG_TYPE_XMM: {
+		struct fpreg fpregs;
+		memset(&fpregs, 0, sizeof(fpregs));
+		memset(buf, 0, size);
+		ret = ptrace(PT_GETFPREGS, pid, (caddr_t)&fpregs, sizeof(fpregs));
+		if (ret != 0) {
+			return false;
+		}
+		if (sizeof(fpregs) < (size_t)size) {
+			size = sizeof(fpregs);
+		}
+		memcpy(buf, &fpregs, size);
+		return sizeof(fpregs);
+	}
 	case RZ_REG_TYPE_SEG:
 	case RZ_REG_TYPE_FLG:
 	case RZ_REG_TYPE_GPR: {
@@ -236,13 +249,15 @@ static int bsd_reg_read(RzDebug *dbg, int type, ut8 *buf, int size) {
 		// process exists still.. is because there's a
 		// missing call to 'wait'. and the process is not
 		// yet available to accept more ptrace queries.
-		if (ret != 0)
+		if (ret != 0) {
 			return false;
-		if (sizeof(regs) < size)
+		}
+		if (sizeof(regs) < (size_t)size) {
 			size = sizeof(regs);
+		}
 		memcpy(buf, &regs, size);
 		return sizeof(regs);
-	} break;
+	}
 	}
 	return true;
 }
@@ -293,20 +308,15 @@ static void _map_free(RzDebugMap *map) {
 
 static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 	RzList *list = NULL;
-	int ign;
-	char unkstr[PROC_UNKSTR_SZ + 1];
 	RzDebugMap *map;
 	int i, perm, unk = 0;
 	char *pos_c;
 	char path[1024], line[1024], name[PROC_NAME_SZ + 1];
-	char region[PROC_REGION_SZ + 1], region2[PROC_REGION_SZ + 1], perms[PROC_PERM_SZ + 1];
+	char perms[PROC_PERM_SZ + 1];
 	FILE *fd;
 	if (dbg->pid == -1) {
 		return NULL;
 	}
-	/* prepend 0x prefix */
-	region[0] = region2[0] = '0';
-	region[1] = region2[1] = 'x';
 
 	list = bsd_native_sysctl_map(dbg);
 	if (list) {
@@ -315,7 +325,7 @@ static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 	snprintf(path, sizeof(path), "/proc/%d/map", dbg->pid);
 	fd = rz_sys_fopen(path, "r");
 	if (!fd) {
-		RZ_LOG_ERROR("Cannot open '%s, Try mounting procfs in /proc/", path);
+		RZ_LOG_ERROR("Cannot open '%s', try mounting procfs in /proc/\n", path);
 		return NULL;
 	}
 
@@ -327,8 +337,7 @@ static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 	list->free = (RzListFree)_map_free;
 	while (!feof(fd)) {
 		size_t line_len;
-		bool map_is_shared = false;
-		ut64 map_start, map_end;
+		ut64 map_start = 0, map_end = 0;
 
 		if (!fgets(line, sizeof(line), fd)) {
 			break;
@@ -344,18 +353,18 @@ static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 			break;
 		}
 		// 0x8070000 0x8072000 2 0 0xc1fde948 rw- 1 0 0x2180 COW NC vnode /usr/bin/gcc
-		if (sscanf(line, "%" RZ_STR_DEF(PROC_REGION_LEFT_SZ) "s %" RZ_STR_DEF(PROC_REGION_LEFT_SZ) "s %d %d 0x%" RZ_STR_DEF(PROC_UNKSTR_SZ) "s %3s %d %d",
-			    &region[2], &region2[2], &ign, &ign,
-			    unkstr, perms, &ign, &ign) != 8) {
+		if (sscanf(line, "%" PFMT64x " %" PFMT64x " %*d %*d %*s %3s %*d %*d",
+			    &map_start, &map_end, perms) != 3) {
 			RZ_LOG_ERROR("%s: Unable to parse \"%s\"\n", __func__, path);
 			rz_list_free(list);
+			fclose(fd);
 			return NULL;
 		}
 
 		/* snag the file name */
 		pos_c = strchr(line, '/');
 		if (pos_c) {
-			strncpy(name, pos_c, sizeof(name) - 1);
+			rz_str_ncpy(name, pos_c, sizeof(name));
 		} else {
 			name[0] = '\0';
 		}
@@ -369,15 +378,11 @@ static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 			case 'r': perm |= RZ_PERM_R; break;
 			case 'w': perm |= RZ_PERM_W; break;
 			case 'x': perm |= RZ_PERM_X; break;
-			case 'p': map_is_shared = false; break;
-			case 's': map_is_shared = true; break;
 			}
 		}
 
-		map_start = rz_num_get(NULL, region);
-		map_end = rz_num_get(NULL, region2);
 		if (map_start == map_end || map_end == 0) {
-			RZ_LOG_WARN("%s: ignoring invalid map size: %s - %s\n", __func__, region, region2);
+			RZ_LOG_WARN("%s: ignoring invalid map size: 0x%" PFMT64x " - 0x%" PFMT64x "\n", __func__, map_start, map_end);
 			continue;
 		}
 		map = rz_debug_map_new(name, map_start, map_end, perm, 0);

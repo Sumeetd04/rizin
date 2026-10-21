@@ -3,30 +3,27 @@
 
 #include <signal.h>
 #include <errno.h>
+#include <dirent.h>
 #include <sys/param.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include <sys/stat.h>
+#include <sys/file.h>
+#include <sys/fcntl.h>
 #include <sys/sysctl.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/un.h>
-#include <arpa/inet.h>
-#include <kvm.h>
-#include <limits.h>
-#include <sys/ptrace.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <kvm.h>
-#include <limits.h>
-#include "bsd_debug.h"
-#include <rz_util/rz_log.h>
+#include <sys/lwp.h>
 #include <sys/proc.h>
+#include <sys/ptrace.h>
+#include <sys/wait.h>
+#include <uvm/uvm_param.h>
+#include <kvm.h>
+#include <limits.h>
+#include <rz_util/rz_log.h>
+#include "bsd_debug.h"
 
-int bsd_handle_signals(RzDebug *dbg) {
-	siginfo_t siginfo;
+int bsd_handle_signals(RZ_NONNULL RzDebug *dbg) {
+	rz_return_val_if_fail(dbg, -1);
 	struct ptrace_siginfo sinfo = { 0 };
-	if (ptrace(PT_GET_SIGINFO, dbg->pid, (char *)&sinfo, sizeof(sinfo)) == -1) {
+	if (ptrace(PT_GET_SIGINFO, dbg->pid, (void *)&sinfo, sizeof(sinfo)) == -1) {
 		if (errno == ESRCH) {
 			dbg->reason.type = RZ_DEBUG_REASON_DEAD;
 			return 0;
@@ -35,7 +32,7 @@ int bsd_handle_signals(RzDebug *dbg) {
 		return -1;
 	}
 
-	siginfo = sinfo.psi_siginfo;
+	siginfo_t siginfo = sinfo.psi_siginfo;
 	dbg->reason.type = RZ_DEBUG_REASON_SIGNAL;
 	dbg->reason.signum = siginfo.si_signo;
 
@@ -56,29 +53,36 @@ int bsd_handle_signals(RzDebug *dbg) {
 	return 0;
 }
 
-int bsd_reg_write(RzDebug *dbg, int type, const ut8 *buf, int size) {
+int bsd_reg_write(RZ_NONNULL RzDebug *dbg, int type, RZ_NONNULL const ut8 *buf, int size) {
+	rz_return_val_if_fail(dbg && buf, false);
+	(void)size;
 	int r = -1;
 	switch (type) {
 	case RZ_REG_TYPE_GPR:
-		r = ptrace(PT_SETREGS, dbg->pid,
-			(caddr_t)buf, sizeof(struct reg));
+		r = ptrace(PT_SETREGS, dbg->pid, (void *)buf, sizeof(struct reg));
 		break;
 	case RZ_REG_TYPE_DRX:
-		r = ptrace(PT_SETDBREGS, dbg->pid, (caddr_t)buf, sizeof(struct dbreg));
+#if __i386__ || __x86_64__
+		r = ptrace(PT_SETDBREGS, dbg->pid, (void *)buf, sizeof(struct dbreg));
+#endif
 		break;
 	case RZ_REG_TYPE_FPU:
-		r = ptrace(PT_SETFPREGS, dbg->pid, (caddr_t)buf, sizeof(struct fpreg));
+		r = ptrace(PT_SETFPREGS, dbg->pid, (void *)buf, sizeof(struct fpreg));
 		break;
 	}
 
-	return (r == 0 ? true : false);
+	return r == 0;
 }
 
-bool bsd_generate_corefile(RzDebug *dbg, char *path, RzBuffer *dest) {
+bool bsd_generate_corefile(RZ_NONNULL RzDebug *dbg, RZ_NONNULL char *path, RZ_NULLABLE RzBuffer *dest) {
+	rz_return_val_if_fail(dbg && path, false);
+	(void)dest;
 	return ptrace(PT_DUMPCORE, dbg->pid, path, strlen(path)) != -1;
 }
 
-RzDebugInfo *bsd_info(RzDebug *dbg, const char *arg) {
+RZ_OWN RzDebugInfo *bsd_info(RZ_NONNULL RzDebug *dbg, RZ_NULLABLE const char *arg) {
+	rz_return_val_if_fail(dbg, NULL);
+	(void)arg;
 	struct kinfo_proc2 *kp;
 	char err[_POSIX2_LINE_MAX];
 	int np;
@@ -94,14 +98,12 @@ RzDebugInfo *bsd_info(RzDebug *dbg, const char *arg) {
 	}
 
 	kp = kvm_getproc2(kd, KERN_PROC_PID, dbg->pid, sizeof(*kp), &np);
-	if (kp) {
+	if (kp && np > 0) {
 		rdi->pid = dbg->pid;
 		rdi->tid = dbg->tid;
 		rdi->uid = kp->p_uid;
 		rdi->gid = kp->p__pgid;
 		rdi->exe = rz_str_dup(kp->p_comm);
-
-		rdi->status = RZ_DBG_PROC_STOP;
 
 		switch (kp->p_stat) {
 		case SDEAD:
@@ -120,6 +122,7 @@ RzDebugInfo *bsd_info(RzDebug *dbg, const char *arg) {
 			break;
 		default:
 			rdi->status = RZ_DBG_PROC_SLEEP;
+			break;
 		}
 	}
 
@@ -128,35 +131,27 @@ RzDebugInfo *bsd_info(RzDebug *dbg, const char *arg) {
 	return rdi;
 }
 
-RzList *bsd_pid_list(RzDebug *dbg, int pid, RzList *list) {
-#define KVM_OPEN_FLAG KVM_NO_FILES
-#define KVM_GETPROCS(kd, opt, arg, cntptr) \
-	kvm_getproc2(kd, opt, arg, sizeof(struct kinfo_proc2), cntptr)
-#define KP_COMM(x) (x)->p_comm
-#define KP_PPID(x) (x)->p_ppid
-#define KP_PID(x)  (x)->p_pid
-#define KP_UID(x)  (x)->p_uid
-#define KINFO_PROC kinfo_proc2
-
+RZ_OWN RzList /*<RzDebugPid *>*/ *bsd_pid_list(RZ_NONNULL RzDebug *dbg, int pid, RZ_NONNULL RzList /*<RzDebugPid *>*/ *list) {
+	rz_return_val_if_fail(dbg && list, NULL);
 	char errbuf[_POSIX2_LINE_MAX];
-	struct KINFO_PROC *kp, *entry;
+	struct kinfo_proc2 *kp, *entry;
 	int cnt = 0;
-	int i;
 
-	kvm_t *kd = kvm_openfiles(NULL, NULL, NULL, KVM_OPEN_FLAG, errbuf);
+	kvm_t *kd = kvm_openfiles(NULL, NULL, NULL, KVM_NO_FILES, errbuf);
 	if (!kd) {
 		RZ_LOG_ERROR("kvm_openfiles failed: %s\n", errbuf);
+		rz_list_free(list);
 		return NULL;
 	}
 
-	kp = KVM_GETPROCS(kd, KERN_PROC_ALL, 0, &cnt);
-	for (i = 0; i < cnt; i++) {
+	kp = kvm_getproc2(kd, KERN_PROC_ALL, 0, sizeof(struct kinfo_proc2), &cnt);
+	for (int i = 0; i < cnt; i++) {
 		entry = kp + i;
-		// Unless pid 0 is requested, only add the requested pid and it's child processes
-		if (0 == pid || KP_PID(entry) == pid || KP_PPID(entry) == pid) {
-			RzDebugPid *p = rz_debug_pid_new(KP_COMM(entry), KP_PID(entry), KP_UID(entry), 's', 0);
+		// Unless pid 0 is requested, only add the requested pid and its child processes
+		if (pid == 0 || entry->p_pid == pid || entry->p_ppid == pid) {
+			RzDebugPid *p = rz_debug_pid_new(entry->p_comm, entry->p_pid, entry->p_uid, 's', 0);
 			if (p) {
-				p->ppid = KP_PPID(entry);
+				p->ppid = entry->p_ppid;
 				rz_list_append(list, p);
 			}
 		}
@@ -166,31 +161,150 @@ RzList *bsd_pid_list(RzDebug *dbg, int pid, RzList *list) {
 	return list;
 }
 
-RzList *bsd_native_sysctl_map(RzDebug *dbg) {
-	return NULL;
+RZ_OWN RzList /*<RzDebugMap *>*/ *bsd_native_sysctl_map(RZ_NONNULL RzDebug *dbg) {
+	rz_return_val_if_fail(dbg, NULL);
+	int mib[5] = { CTL_VM, VM_PROC, VM_PROC_MAP, dbg->pid, sizeof(struct kinfo_vmentry) };
+	size_t len = 0;
+
+	if (sysctl(mib, 5, NULL, &len, NULL, 0) == -1 || len == 0) {
+		return NULL;
+	}
+	len = len * 4 / 3;
+	struct kinfo_vmentry *kve = malloc(len);
+	if (!kve) {
+		return NULL;
+	}
+	if (sysctl(mib, 5, kve, &len, NULL, 0) == -1) {
+		free(kve);
+		return NULL;
+	}
+
+	RzList *list = rz_debug_map_list_new();
+	if (!list) {
+		free(kve);
+		return NULL;
+	}
+
+	size_t count = len / sizeof(struct kinfo_vmentry);
+	int unk = 0;
+	for (size_t i = 0; i < count; i++) {
+		int perm = 0;
+		if (kve[i].kve_protection & KVME_PROT_READ) {
+			perm |= RZ_PERM_R;
+		}
+		if (kve[i].kve_protection & KVME_PROT_WRITE) {
+			perm |= RZ_PERM_W;
+		}
+		if (kve[i].kve_protection & KVME_PROT_EXEC) {
+			perm |= RZ_PERM_X;
+		}
+
+		char unk_name[32];
+		char *name = kve[i].kve_path;
+		if (!*name) {
+			snprintf(unk_name, sizeof(unk_name), "unk%d", unk++);
+			name = unk_name;
+		}
+
+		RzDebugMap *map = rz_debug_map_new(name, kve[i].kve_start, kve[i].kve_end, perm, 0);
+		if (!map) {
+			break;
+		}
+		map->offset = kve[i].kve_offset;
+		map->file = rz_str_dup(name);
+		rz_list_append(list, map);
+	}
+
+	free(kve);
+	return list;
 }
 
-RzList *bsd_desc_list(int pid) {
+static RZ_OWN RzList /*<RzDebugDesc *>*/ *netbsd_sysctl_desc_list(int pid) {
+	int mib[6] = { CTL_KERN, KERN_FILE2, KERN_FILE_BYPID, pid, sizeof(struct kinfo_file), 0 };
+	size_t len = 0;
+
+	if (sysctl(mib, 6, NULL, &len, NULL, 0) == -1) {
+		return NULL;
+	}
+	len += sizeof(struct kinfo_file) * 8;
+	struct kinfo_file *kf = malloc(len);
+	if (!kf) {
+		return NULL;
+	}
+	mib[5] = (int)(len / sizeof(struct kinfo_file));
+	if (sysctl(mib, 6, kf, &len, NULL, 0) == -1) {
+		free(kf);
+		return NULL;
+	}
+
+	RzList *ret = rz_list_newf((RzListFree)rz_debug_desc_free);
+	if (!ret) {
+		free(kf);
+		return NULL;
+	}
+
+	size_t count = len / sizeof(struct kinfo_file);
+	for (size_t i = 0; i < count; i++) {
+		if (kf[i].ki_fd < 0) {
+			continue;
+		}
+		int type = '-';
+		switch (kf[i].ki_ftype) {
+		case DTYPE_VNODE:
+			type = 'v';
+			break;
+		case DTYPE_SOCKET:
+			type = 's';
+			break;
+		case DTYPE_PIPE:
+			type = 'p';
+			break;
+		case DTYPE_KQUEUE:
+			type = 'k';
+			break;
+		default:
+			type = '-';
+			break;
+		}
+		int perm = 0;
+		if (kf[i].ki_flag & FREAD) {
+			perm |= RZ_PERM_R;
+		}
+		if (kf[i].ki_flag & FWRITE) {
+			perm |= RZ_PERM_W;
+		}
+		char empty_path[] = "";
+		RzDebugDesc *desc = rz_debug_desc_new(kf[i].ki_fd, empty_path, perm, type, kf[i].ki_foffset);
+		if (!desc) {
+			break;
+		}
+		rz_list_append(ret, desc);
+	}
+
+	free(kf);
+	return ret;
+}
+
+RZ_OWN RzList /*<RzDebugDesc *>*/ *bsd_desc_list(int pid) {
 	RzList *ret = NULL;
 	char path[512], file[512], buf[512];
 	struct dirent *de;
 	RzDebugDesc *desc;
 	int type, perm;
-	int len, len2;
+	size_t len, len2;
 	struct stat st;
 	DIR *dd = NULL;
 
 	rz_strf(path, "/proc/%i/fd/", pid);
 	if (!(dd = opendir(path))) {
-		rz_sys_perror("opendir /proc/x/fd");
-		return NULL;
+		return netbsd_sysctl_desc_list(pid);
 	}
 	ret = rz_list_newf((RzListFree)rz_debug_desc_free);
 	if (!ret) {
 		closedir(dd);
 		return NULL;
 	}
-	while ((de = (struct dirent *)readdir(dd))) {
+	while ((de = readdir(dd))) {
 		if (de->d_name[0] == '.') {
 			continue;
 		}
@@ -203,18 +317,19 @@ RzList *bsd_desc_list(int pid) {
 		memcpy(file, path, len);
 		memcpy(file + len, de->d_name, len2 + 1);
 		buf[0] = 0;
-		if (readlink(file, buf, sizeof(buf) - 1) == -1) {
+		ssize_t rlen = readlink(file, buf, sizeof(buf) - 1);
+		if (rlen == -1) {
 			RZ_LOG_ERROR("readlink %s failed.\n", file);
 			goto fail;
 		}
-		buf[sizeof(buf) - 1] = 0;
+		buf[rlen] = '\0';
 		type = perm = 0;
 		if (stat(file, &st) != -1) {
 			type = st.st_mode & S_IFIFO ? 'P' : st.st_mode & S_IFSOCK ? 'S'
 				: st.st_mode & S_IFCHR                            ? 'C'
 										  : '-';
 		}
-		if (lstat(path, &st) != -1) {
+		if (lstat(file, &st) != -1) {
 			if (st.st_mode & S_IRUSR) {
 				perm |= RZ_PERM_R;
 			}
@@ -222,7 +337,6 @@ RzList *bsd_desc_list(int pid) {
 				perm |= RZ_PERM_W;
 			}
 		}
-		// TODO: Offset
 		desc = rz_debug_desc_new(atoi(de->d_name), buf, perm, type, 0);
 		if (!desc) {
 			break;
@@ -245,63 +359,50 @@ static int get_rz_status(int stat) {
 	case LSIDL:
 		return RZ_DBG_PROC_RUN;
 	case LSSTOP:
+	case LSSUSPENDED:
 		return RZ_DBG_PROC_STOP;
 	case LSZOMB:
 		return RZ_DBG_PROC_ZOMBIE;
 	case LSSLEEP:
 		return RZ_DBG_PROC_SLEEP;
-	case LSSUSPENDED:
-		return RZ_DBG_PROC_STOP;
 	default:
 		return RZ_DBG_PROC_DEAD;
 	}
 }
 
-static RzList *netbsd_thread_list(RzDebug *dbg, int pid, RzList *list) {
-	int mib[6] = { CTL_KERN, KERN_PROC2, KERN_PROC_PID, pid, sizeof(struct kinfo_proc2), 0 };
-	struct kinfo_proc2 *kp;
-	size_t len = 0;
-	size_t max;
-	int i = 0;
+RZ_OWN RzList /*<RzDebugPid *>*/ *bsd_thread_list(RZ_NONNULL RzDebug *dbg, int pid, RZ_NONNULL RzList /*<RzDebugPid *>*/ *list) {
+	rz_return_val_if_fail(dbg && list, NULL);
+	char errbuf[_POSIX2_LINE_MAX];
+	int cnt = 0, np = 0;
 
-	if (sysctl(mib, 6, NULL, &len, NULL, 0) == -1) {
+	kvm_t *kd = kvm_openfiles(NULL, NULL, NULL, KVM_NO_FILES, errbuf);
+	if (!kd) {
+		RZ_LOG_ERROR("kvm_openfiles failed: %s\n", errbuf);
 		rz_list_free(list);
 		return NULL;
 	}
 
-	len += sizeof(*kp) + len / 10;
-	kp = malloc(len);
-	if (!kp) {
+	struct kinfo_proc2 *kp = kvm_getproc2(kd, KERN_PROC_PID, pid, sizeof(*kp), &np);
+	uid_t uid = (kp && np > 0) ? kp->p_uid : 0;
+	const char *comm = (kp && np > 0) ? kp->p_comm : "";
+
+	struct kinfo_lwp *kl = kvm_getlwps(kd, pid, 0, sizeof(struct kinfo_lwp), &cnt);
+	if (!kl) {
+		kvm_close(kd);
 		rz_list_free(list);
 		return NULL;
 	}
 
-	mib[5] = len / sizeof(struct kinfo_proc2);
-
-	if (sysctl(mib, 6, kp, &len, NULL, 0) == -1) {
-		free(kp);
-		rz_list_free(list);
-		return NULL;
-	}
-
-	max = len / sizeof(*kp);
-
-	for (i = 0; i < max; i++) {
-		int pid_stat = get_rz_status(kp[i].p_stat);
-
-		RzDebugPid *pid_info = rz_debug_pid_new(kp[i].p_comm, kp[i].p_pid,
-			kp[i].p_uid, pid_stat, (ut64)kp[i].p_wchan);
-
+	for (int i = 0; i < cnt; i++) {
+		int lwp_stat = get_rz_status(kl[i].l_stat);
+		const char *th_name = kl[i].l_name[0] ? kl[i].l_name : comm;
+		RzDebugPid *pid_info = rz_debug_pid_new(th_name, kl[i].l_lid,
+			uid, lwp_stat, (ut64)kl[i].l_wchan);
 		if (pid_info) {
 			rz_list_append(list, pid_info);
 		}
 	}
 
-	free(kp);
+	kvm_close(kd);
 	return list;
-}
-
-RzList *bsd_thread_list(RzDebug *dbg, int pid, RzList *list) {
-	RzList *thread_list = netbsd_thread_list(dbg, pid, list);
-	return thread_list;
 }

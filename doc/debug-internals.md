@@ -193,8 +193,11 @@ following files:
     librz/debug/p/native/xnu/reg/darwin-x64.h
 
     // platform-specific debugger code on BSD
-    librz/debug/p/native/bsd/bsd_debug.c         // main BSD debugging code
     librz/debug/p/native/bsd/bsd_debug.h
+    librz/debug/p/native/bsd/kfbsd_debug.c       // FreeBSD-specific debugging code
+    librz/debug/p/native/bsd/netbsd_debug.c      // NetBSD-specific debugging code
+    librz/debug/p/native/bsd/openbsd_debug.c     // OpenBSD-specific debugging code
+    librz/debug/p/native/bsd/dragonfly_debug.c   // DragonFlyBSD-specific debugging code
 
 
 ### librz/debug/p/debug_qnx.c

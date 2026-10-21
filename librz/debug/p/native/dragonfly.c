@@ -26,8 +26,7 @@
 #define PROC_UNKSTR_SZ      128
 
 static int rz_debug_handle_signals(RzDebug *dbg) {
-	RZ_LOG_ERROR("signal handling is not supported on this platform\n");
-	return 0;
+	return bsd_handle_signals(dbg);
 }
 
 static char *rz_debug_native_reg_profile(RzDebug *dbg) {
@@ -43,11 +42,35 @@ static bool rz_debug_native_step(RzDebug *dbg) {
 	return true;
 }
 
+static int match_pid(const void *pid_o, const void *th_o, void *user) {
+	int pid = *(int *)pid_o;
+	RzDebugPid *th = (RzDebugPid *)th_o;
+	return pid != th->pid;
+}
+
+static RZ_OWN RzList /*<RzDebugPid *>*/ *get_pid_thread_list(RZ_NONNULL RzDebug *dbg, int main_pid) {
+	rz_return_val_if_fail(dbg, NULL);
+	RzList *list = rz_list_new();
+	if (!list) {
+		RZ_LOG_ERROR("Cannot create thread list\n");
+		return NULL;
+	}
+	list = bsd_thread_list(dbg, main_pid, list);
+	dbg->main_pid = main_pid;
+	return list;
+}
+
 static int rz_debug_native_attach(RzDebug *dbg, int pid) {
-	int ret = ptrace(PTRACE_ATTACH, pid, 0, 0);
-	if (ret != -1) {
-		RZ_LOG_ERROR("Trying to attach to %d\n", pid);
-		rz_sys_perror("ptrace (PT_ATTACH)");
+	if (!dbg->threads) {
+		dbg->threads = get_pid_thread_list(dbg, pid);
+		return pid;
+	}
+	if (!rz_list_find(dbg->threads, &pid, &match_pid, NULL)) {
+		int ret = ptrace(PTRACE_ATTACH, pid, 0, 0);
+		if (ret == -1) {
+			RZ_LOG_ERROR("Trying to attach to %d\n", pid);
+			rz_sys_perror("ptrace (PT_ATTACH)");
+		}
 	}
 	return pid;
 }
@@ -73,7 +96,7 @@ static int rz_debug_native_continue(RzDebug *dbg, int pid, int tid, int sig) {
 }
 
 static RzDebugInfo *rz_debug_native_info(RzDebug *dbg, const char *arg) {
-	return NULL;
+	return bsd_info(dbg, arg);
 }
 
 static RzDebugReasonType rz_debug_native_wait(RzDebug *dbg, int pid) {
@@ -84,10 +107,7 @@ static RzDebugReasonType rz_debug_native_wait(RzDebug *dbg, int pid) {
 		return RZ_DEBUG_REASON_ERROR;
 	}
 	int status = -1;
-	int ret = waitpid(-1, &status, 0);
-	if (ret != -1) {
-		reason = RZ_DEBUG_REASON_TRAP;
-	}
+	int ret = waitpid(pid, &status, 0);
 	if (ret == -1) {
 		rz_sys_perror("waitpid");
 		return RZ_DEBUG_REASON_ERROR;
@@ -105,16 +125,11 @@ static RzDebugReasonType rz_debug_native_wait(RzDebug *dbg, int pid) {
 			RZ_LOG_WARN("child received signal %d\n", WTERMSIG(status));
 			reason = RZ_DEBUG_REASON_SIGNAL;
 		} else if (WIFSTOPPED(status)) {
+			dbg->reason.signum = WSTOPSIG(status);
 			if (WSTOPSIG(status) != SIGTRAP &&
 				WSTOPSIG(status) != SIGSTOP) {
 				RZ_LOG_WARN("Child stopped with signal %d\n", WSTOPSIG(status));
 			}
-
-			/* the ptrace documentation says GETSIGINFO is only necessary for
-			 * differentiating the various stops.
-			 *
-			 * this might modify dbg->reason.signum
-			 */
 			if (rz_debug_handle_signals(dbg) != 0) {
 				return RZ_DEBUG_REASON_ERROR;
 			}
@@ -174,41 +189,64 @@ RZ_API ut64 rz_debug_get_tls(RZ_NONNULL RzDebug *dbg, int tid) {
 }
 
 static int bsd_reg_read(RzDebug *dbg, int type, ut8 *buf, int size) {
-	int showfpu = false;
 	int pid = dbg->pid;
 	int ret;
 	if (type < -1) {
-		showfpu = true; // hack for debugging
 		type = -type;
 	}
 	switch (type) {
 	case RZ_REG_TYPE_DRX:
-
+#if __i386__ || __x86_64__
+	{
+		struct dbreg dbr;
+		ret = ptrace(PT_GETDBREGS, pid, (caddr_t)&dbr, sizeof(dbr));
+		if (ret != 0) {
+			return false;
+		}
+		if (sizeof(dbr) < (size_t)size) {
+			size = sizeof(dbr);
+		}
+		memcpy(buf, &dbr, size);
+		return sizeof(dbr);
+	}
+#endif
 		return true;
-		break;
 	case RZ_REG_TYPE_FPU:
 	case RZ_REG_TYPE_MMX:
-	case RZ_REG_TYPE_XMM:
-		break;
+	case RZ_REG_TYPE_XMM: {
+		struct fpreg fpregs;
+		memset(&fpregs, 0, sizeof(fpregs));
+		memset(buf, 0, size);
+		ret = ptrace(PT_GETFPREGS, pid, (caddr_t)&fpregs, sizeof(fpregs));
+		if (ret != 0) {
+			return false;
+		}
+		if (sizeof(fpregs) < (size_t)size) {
+			size = sizeof(fpregs);
+		}
+		memcpy(buf, &fpregs, size);
+		return sizeof(fpregs);
+	}
 	case RZ_REG_TYPE_SEG:
 	case RZ_REG_TYPE_FLG:
 	case RZ_REG_TYPE_GPR: {
 		RZ_DEBUG_REG_T regs;
 		memset(&regs, 0, sizeof(regs));
 		memset(buf, 0, size);
-#warning "not implemented for this platform"
-		ret = 1;
+		ret = ptrace(PT_GETREGS, pid, (caddr_t)&regs, 0);
 		// if perror here says 'no such process' and the
 		// process exists still.. is because there's a
 		// missing call to 'wait'. and the process is not
 		// yet available to accept more ptrace queries.
-		if (ret != 0)
+		if (ret != 0) {
 			return false;
-		if (sizeof(regs) < size)
+		}
+		if (sizeof(regs) < (size_t)size) {
 			size = sizeof(regs);
+		}
 		memcpy(buf, &regs, size);
 		return sizeof(regs);
-	} break;
+	}
 	}
 	return true;
 }
@@ -263,22 +301,21 @@ static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 	int i, perm, unk = 0;
 	char *pos_c;
 	char path[1024], line[1024], name[PROC_NAME_SZ + 1];
-	char region[PROC_REGION_SZ + 1], region2[PROC_REGION_SZ + 1], perms[PROC_PERM_SZ + 1];
+	char perms[PROC_PERM_SZ + 1];
 	FILE *fd;
 	if (dbg->pid == -1) {
 		return NULL;
 	}
-	/* prepend 0x prefix */
-	region[0] = region2[0] = '0';
-	region[1] = region2[1] = 'x';
 
-	snprintf(path, sizeof(path), "/proc/%d/maps", dbg->pid);
+	list = bsd_native_sysctl_map(dbg);
+	if (list) {
+		return list;
+	}
 
+	snprintf(path, sizeof(path), "/proc/%d/map", dbg->pid);
 	fd = rz_sys_fopen(path, "r");
 	if (!fd) {
-		char *errmsg = rz_str_newf("Cannot open '%s'", path);
-		rz_sys_perror(errmsg);
-		free(errmsg);
+		RZ_LOG_ERROR("Cannot open '%s', try mounting procfs in /proc/\n", path);
 		return NULL;
 	}
 
@@ -290,8 +327,7 @@ static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 	list->free = (RzListFree)_map_free;
 	while (!feof(fd)) {
 		size_t line_len;
-		bool map_is_shared = false;
-		ut64 map_start, map_end;
+		ut64 map_start = 0, map_end = 0;
 
 		if (!fgets(line, sizeof(line), fd)) {
 			break;
@@ -307,26 +343,22 @@ static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 			break;
 		}
 
-		ut64 offset = 0;
-		// 7fc8124c4000-7fc81278d000 r--p 00000000 fc:00 17043921 /usr/lib/locale/locale-archive
-		i = sscanf(line, "%" RZ_STR_DEF(PROC_REGION_LEFT_SZ) "s %" RZ_STR_DEF(PROC_PERM_SZ) "s %08" PFMT64x " %*s %*s %" RZ_STR_DEF(PROC_NAME_SZ) "[^\n]", &region[2], perms, &offset, name);
-		if (i == 3) {
-			name[0] = '\0';
-		} else if (i != 4) {
+		// 0x0000000000400000 0x0000000000401000 1 -1 0xfffff800... r-x 1 0 0x0000 COW NC vnode /bin/ls
+		if (sscanf(line, "%" PFMT64x " %" PFMT64x " %*d %*d %*s %3s %*d %*d",
+			    &map_start, &map_end, perms) != 3) {
 			RZ_LOG_ERROR("%s: Unable to parse \"%s\"\n", __func__, path);
-			RZ_LOG_ERROR("%s: problematic line: %s\n", __func__, line);
 			rz_list_free(list);
+			fclose(fd);
 			return NULL;
 		}
 
-		/* split the region in two */
-		pos_c = strchr(&region[2], '-');
-		if (!pos_c) { // should this be an error?
-			continue;
+		/* snag the file name */
+		pos_c = strchr(line, '/');
+		if (pos_c) {
+			rz_str_ncpy(name, pos_c, sizeof(name));
+		} else {
+			name[0] = '\0';
 		}
-		strncpy(&region2[2], pos_c + 1, sizeof(region2) - 2 - 1);
-		// Terminate the start token at the '-'
-		*pos_c = 0;
 
 		if (!*name) {
 			snprintf(name, sizeof(name), "unk%d", unk++);
@@ -337,15 +369,11 @@ static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 			case 'r': perm |= RZ_PERM_R; break;
 			case 'w': perm |= RZ_PERM_W; break;
 			case 'x': perm |= RZ_PERM_X; break;
-			case 'p': map_is_shared = false; break;
-			case 's': map_is_shared = true; break;
 			}
 		}
 
-		map_start = rz_num_get(NULL, region);
-		map_end = rz_num_get(NULL, region2);
 		if (map_start == map_end || map_end == 0) {
-			RZ_LOG_WARN("%s: ignoring invalid map size: %s - %s\n", __func__, region, region2);
+			RZ_LOG_WARN("%s: ignoring invalid map size: 0x%" PFMT64x " - 0x%" PFMT64x "\n", __func__, map_start, map_end);
 			continue;
 		}
 		map = rz_debug_map_new(name, map_start, map_end, perm, 0);
@@ -510,8 +538,7 @@ static int rz_debug_native_bp(RzBreakpoint *bp, RzBreakpointItem *b, bool set) {
 }
 
 static RzList /*<RzDebugDesc *>*/ *rz_debug_desc_native_list(int pid) {
-#warning "list filedescriptors not supported for this platform"
-	return NULL;
+	return bsd_desc_list(pid);
 }
 
 static int rz_debug_native_map_protect(RzDebug *dbg, ut64 addr, int size, int perms) {
@@ -523,7 +550,7 @@ static int rz_debug_desc_native_open(const char *path) {
 }
 
 static bool rz_debug_gcore(RzDebug *dbg, char *path, RzBuffer *dest) {
-	return false;
+	return bsd_generate_corefile(dbg, path, dest);
 }
 
 struct rz_debug_desc_plugin_t rz_debug_desc_plugin_native = {
