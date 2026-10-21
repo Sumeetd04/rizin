@@ -3,26 +3,22 @@
 
 #include <signal.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/sysctl.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/un.h>
 #include <arpa/inet.h>
 #include <kvm.h>
 #include <limits.h>
 #include <sys/ptrace.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <kvm.h>
-#include <limits.h>
-#include "bsd_debug.h"
-#include <rz_util/rz_log.h>
 #include <sys/user.h>
 #include <libutil.h>
+#include <rz_util/rz_log.h>
+#include "bsd_debug.h"
 
 static void addr_to_string(struct sockaddr_storage *ss, char *buffer, int buflen) {
 	char buffer2[INET6_ADDRSTRLEN];
@@ -30,38 +26,40 @@ static void addr_to_string(struct sockaddr_storage *ss, char *buffer, int buflen
 	struct sockaddr_in *sin;
 	struct sockaddr_un *sun;
 
-	if (buflen > 0)
-		switch (ss->ss_family) {
-		case AF_LOCAL:
-			sun = (struct sockaddr_un *)ss;
-			strncpy(buffer, (sun && *sun->sun_path) ? sun->sun_path : "-", buflen - 1);
-			break;
-		case AF_INET:
-			sin = (struct sockaddr_in *)ss;
-			snprintf(buffer, buflen, "%s:%d", inet_ntoa(sin->sin_addr),
-				ntohs(sin->sin_port));
-			break;
-		case AF_INET6:
-			sin6 = (struct sockaddr_in6 *)ss;
-			if (inet_ntop(AF_INET6, &sin6->sin6_addr, buffer2,
-				    sizeof(buffer2)) != NULL) {
-				snprintf(buffer, buflen, "%s.%d", buffer2,
-					ntohs(sin6->sin6_port));
-			} else {
-				strcpy(buffer, "-");
-			}
-			break;
-		default:
-			*buffer = 0;
-			break;
+	if (buflen <= 0) {
+		return;
+	}
+	switch (ss->ss_family) {
+	case AF_LOCAL:
+		sun = (struct sockaddr_un *)ss;
+		strncpy(buffer, (sun && *sun->sun_path) ? sun->sun_path : "-", buflen - 1);
+		buffer[buflen - 1] = '\0';
+		break;
+	case AF_INET:
+		sin = (struct sockaddr_in *)ss;
+		snprintf(buffer, buflen, "%s:%d", inet_ntoa(sin->sin_addr),
+			ntohs(sin->sin_port));
+		break;
+	case AF_INET6:
+		sin6 = (struct sockaddr_in6 *)ss;
+		if (inet_ntop(AF_INET6, &sin6->sin6_addr, buffer2,
+			    sizeof(buffer2)) != NULL) {
+			snprintf(buffer, buflen, "%s.%d", buffer2,
+				ntohs(sin6->sin6_port));
+		} else {
+			rz_str_ncpy(buffer, "-", buflen);
 		}
+		break;
+	default:
+		*buffer = 0;
+		break;
+	}
 }
 
-int bsd_handle_signals(RzDebug *dbg) {
-	siginfo_t siginfo;
-	// Trying to figure out a bit by the signal
+int bsd_handle_signals(RZ_NONNULL RzDebug *dbg) {
+	rz_return_val_if_fail(dbg, -1);
 	struct ptrace_lwpinfo linfo = { 0 };
-	int ret = ptrace(PT_LWPINFO, dbg->pid, (char *)&linfo, sizeof(linfo));
+	int ret = ptrace(PT_LWPINFO, dbg->pid, (caddr_t)&linfo, sizeof(linfo));
 	if (ret == -1) {
 		if (errno == ESRCH) {
 			dbg->reason.type = RZ_DEBUG_REASON_DEAD;
@@ -71,7 +69,7 @@ int bsd_handle_signals(RzDebug *dbg) {
 		return -1;
 	}
 
-	siginfo = linfo.pl_siginfo;
+	siginfo_t siginfo = linfo.pl_siginfo;
 	dbg->reason.type = RZ_DEBUG_REASON_SIGNAL;
 	dbg->reason.signum = siginfo.si_signo;
 
@@ -92,34 +90,45 @@ int bsd_handle_signals(RzDebug *dbg) {
 	return 0;
 }
 
-int bsd_reg_write(RzDebug *dbg, int type, const ut8 *buf, int size) {
+int bsd_reg_write(RZ_NONNULL RzDebug *dbg, int type, RZ_NONNULL const ut8 *buf, int size) {
+	rz_return_val_if_fail(dbg && buf, false);
+	(void)size;
 	int r = -1;
 	switch (type) {
 	case RZ_REG_TYPE_GPR:
-		r = ptrace(PT_SETREGS, dbg->pid,
-			(caddr_t)buf, sizeof(struct reg));
+		r = ptrace(PT_SETREGS, dbg->pid, (caddr_t)buf, sizeof(struct reg));
 		break;
 	case RZ_REG_TYPE_DRX:
+#if __i386__ || __x86_64__
 		r = ptrace(PT_SETDBREGS, dbg->pid, (caddr_t)buf, sizeof(struct dbreg));
+#endif
 		break;
 	case RZ_REG_TYPE_FPU:
 		r = ptrace(PT_SETFPREGS, dbg->pid, (caddr_t)buf, sizeof(struct fpreg));
 		break;
 	}
 
-	return (r == 0 ? true : false);
+	return r == 0;
 }
 
-bool bsd_generate_corefile(RzDebug *dbg, char *path, RzBuffer *dest) {
-#if defined(__FreeBSD__) && __FreeBSD_version >= 1302000
+bool bsd_generate_corefile(RZ_NONNULL RzDebug *dbg, RZ_NONNULL char *path, RZ_NULLABLE RzBuffer *dest) {
+	rz_return_val_if_fail(dbg && path, false);
+	(void)path;
+#ifdef PT_COREDUMP
+	if (!dest) {
+		return false;
+	}
 	struct ptrace_coredump pc = { .pc_fd = dest->fd, .pc_flags = PC_ALL, .pc_limit = 0 };
-	return ptrace(PT_COREDUMP, dbg->pid, (void *)&pc, sizeof(pc)) != -1;
+	return ptrace(PT_COREDUMP, dbg->pid, (caddr_t)&pc, sizeof(pc)) != -1;
 #else
+	(void)dest;
 	return false;
 #endif
 }
 
-RzDebugInfo *bsd_info(RzDebug *dbg, const char *arg) {
+RZ_OWN RzDebugInfo *bsd_info(RZ_NONNULL RzDebug *dbg, RZ_NULLABLE const char *arg) {
+	rz_return_val_if_fail(dbg, NULL);
+	(void)arg;
 	struct kinfo_proc *kp;
 	RzDebugInfo *rdi = RZ_NEW0(RzDebugInfo);
 	if (!rdi) {
@@ -155,6 +164,7 @@ RzDebugInfo *bsd_info(RzDebug *dbg, const char *arg) {
 		break;
 	default:
 		rdi->status = RZ_DBG_PROC_DEAD;
+		break;
 	}
 
 	free(kp);
@@ -162,38 +172,27 @@ RzDebugInfo *bsd_info(RzDebug *dbg, const char *arg) {
 	return rdi;
 }
 
-RzList *bsd_pid_list(RzDebug *dbg, int pid, RzList *list) {
-#define KVM_OPEN_FLAG O_RDONLY
-#define KVM_GETPROCS(kd, opt, arg, cntptr) \
-	kvm_getprocs(kd, opt, arg, cntptr)
-#define KP_COMM(x) (x)->ki_comm
-#define KP_PID(x)  (x)->ki_pid
-#define KP_PPID(x) (x)->ki_ppid
-#define KP_UID(x)  (x)->ki_uid
-#define KINFO_PROC kinfo_proc
+RZ_OWN RzList /*<RzDebugPid *>*/ *bsd_pid_list(RZ_NONNULL RzDebug *dbg, int pid, RZ_NONNULL RzList /*<RzDebugPid *>*/ *list) {
+	rz_return_val_if_fail(dbg && list, NULL);
 	char errbuf[_POSIX2_LINE_MAX];
-	struct KINFO_PROC *kp, *entry;
+	struct kinfo_proc *kp, *entry;
 	int cnt = 0;
-	int i;
 
-#if __FreeBSD__
-	kvm_t *kd = kvm_openfiles(NULL, "/dev/null", NULL, KVM_OPEN_FLAG, errbuf);
-#else
-	kvm_t *kd = kvm_openfiles(NULL, NULL, NULL, KVM_OPEN_FLAG, errbuf);
-#endif
+	kvm_t *kd = kvm_openfiles(NULL, "/dev/null", NULL, O_RDONLY, errbuf);
 	if (!kd) {
 		RZ_LOG_ERROR("kvm_openfiles failed: %s\n", errbuf);
+		rz_list_free(list);
 		return NULL;
 	}
 
-	kp = KVM_GETPROCS(kd, KERN_PROC_PROC, 0, &cnt);
-	for (i = 0; i < cnt; i++) {
+	kp = kvm_getprocs(kd, KERN_PROC_PROC, 0, &cnt);
+	for (int i = 0; i < cnt; i++) {
 		entry = kp + i;
-		// Unless pid 0 is requested, only add the requested pid and it's child processes
-		if (0 == pid || KP_PID(entry) == pid || KP_PPID(entry) == pid) {
-			RzDebugPid *p = rz_debug_pid_new(KP_COMM(entry), KP_PID(entry), KP_UID(entry), 's', 0);
+		// Unless pid 0 is requested, only add the requested pid and its child processes
+		if (pid == 0 || entry->ki_pid == pid || entry->ki_ppid == pid) {
+			RzDebugPid *p = rz_debug_pid_new(entry->ki_comm, entry->ki_pid, entry->ki_uid, 's', 0);
 			if (p) {
-				p->ppid = KP_PPID(entry);
+				p->ppid = entry->ki_ppid;
 				rz_list_append(list, p);
 			}
 		}
@@ -203,29 +202,16 @@ RzList *bsd_pid_list(RzDebug *dbg, int pid, RzList *list) {
 	return list;
 }
 
-RzList *bsd_native_sysctl_map(RzDebug *dbg) {
-	int mib[4];
+RZ_OWN RzList /*<RzDebugMap *>*/ *bsd_native_sysctl_map(RZ_NONNULL RzDebug *dbg) {
+	rz_return_val_if_fail(dbg, NULL);
+	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_VMMAP, dbg->pid };
 	size_t len = 0;
-	char *buf = NULL;
-	char *bp = NULL;
-	char *eb = NULL;
-	struct kinfo_vmentry *kve = NULL;
-	RzList *list = NULL;
-	RzDebugMap *map = NULL;
-	char *name = NULL;
-	ut64 map_start = 0;
-	ut64 map_end = 0;
-	int perm = 0;
 
-	mib[0] = CTL_KERN;
-	mib[1] = KERN_PROC;
-	mib[2] = KERN_PROC_VMMAP;
-	mib[3] = dbg->pid;
-
-	if (sysctl(mib, 4, NULL, &len, NULL, 0) != 0)
+	if (sysctl(mib, 4, NULL, &len, NULL, 0) != 0) {
 		return NULL;
+	}
 	len = len * 4 / 3;
-	buf = malloc(len);
+	char *buf = malloc(len);
 	if (!buf) {
 		return NULL;
 	}
@@ -233,61 +219,49 @@ RzList *bsd_native_sysctl_map(RzDebug *dbg) {
 		free(buf);
 		return NULL;
 	}
-	bp = buf;
-	eb = buf + len;
-	list = rz_debug_map_list_new();
+	char *bp = buf;
+	char *eb = buf + len;
+	RzList *list = rz_debug_map_list_new();
 	if (!list) {
 		free(buf);
 		return NULL;
 	}
 	while (bp < eb) {
-		kve = (struct kinfo_vmentry *)(uintptr_t)bp;
-		name = kve->kve_path;
-		map_start = kve->kve_start;
-		map_end = kve->kve_end;
-
-		if (kve->kve_protection & VM_PROT_READ) {
+		struct kinfo_vmentry *kve = (struct kinfo_vmentry *)(void *)bp;
+		int perm = 0;
+		if (kve->kve_protection & KVME_PROT_READ) {
 			perm |= RZ_PERM_R;
 		}
-		if (kve->kve_protection & VM_PROT_WRITE) {
+		if (kve->kve_protection & KVME_PROT_WRITE) {
 			perm |= RZ_PERM_W;
 		}
-		if (kve->kve_protection & VM_PROT_EXECUTE) {
+		if (kve->kve_protection & KVME_PROT_EXEC) {
 			perm |= RZ_PERM_X;
 		}
 
-		map = rz_debug_map_new(name, map_start, map_end, perm, 0);
+		RzDebugMap *map = rz_debug_map_new(kve->kve_path, kve->kve_start, kve->kve_end, perm, 0);
 		if (!map) {
-			RZ_LOG_ERROR("Cannot create map entry for %s\n", name);
 			break;
 		}
 		map->offset = kve->kve_offset;
-		map->file = rz_str_dup(name);
+		map->file = rz_str_dup(kve->kve_path);
 		rz_list_append(list, map);
+
 		bp += kve->kve_structsize;
 	}
 	free(buf);
 	return list;
 }
 
-RzList *bsd_desc_list(int pid) {
-	RzList *ret = NULL;
-	int perm, type, mib[4];
-	size_t len;
-	char *buf, *bp, *eb, *str, path[1024];
-	RzDebugDesc *desc;
-	struct kinfo_file *kve;
+RZ_OWN RzList /*<RzDebugDesc *>*/ *bsd_desc_list(int pid) {
+	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_FILEDESC, pid };
+	size_t len = 0;
 
-	len = 0;
-	mib[0] = CTL_KERN;
-	mib[1] = KERN_PROC;
-	mib[2] = KERN_PROC_FILEDESC;
-	mib[3] = pid;
-
-	if (sysctl(mib, 4, NULL, &len, NULL, 0) != 0)
+	if (sysctl(mib, 4, NULL, &len, NULL, 0) != 0) {
 		return NULL;
+	}
 	len = len * 4 / 3;
-	buf = malloc(len);
+	char *buf = malloc(len);
 	if (!buf) {
 		return NULL;
 	}
@@ -295,73 +269,75 @@ RzList *bsd_desc_list(int pid) {
 		free(buf);
 		return NULL;
 	}
-	bp = buf;
-	eb = buf + len;
-	ret = rz_list_new();
+	char *bp = buf;
+	char *eb = buf + len;
+	RzList *ret = rz_list_newf((RzListFree)rz_debug_desc_free);
 	if (!ret) {
 		free(buf);
 		return NULL;
 	}
-	ret->free = (RzListFree)rz_debug_desc_free;
 	while (bp < eb) {
-		kve = (struct kinfo_file *)(uintptr_t)bp;
-		bp += kve->kf_structsize;
-		if (kve->kf_fd < 0)
+		struct kinfo_file *kf = (struct kinfo_file *)(void *)bp;
+		bp += kf->kf_structsize;
+		if (kf->kf_fd < 0) {
 			continue; // Skip root and cwd. We need it ??
-		str = kve->kf_path;
-		switch (kve->kf_type) {
-		case KF_TYPE_VNODE: type = 'v'; break;
+		}
+		int perm = 0;
+		int type = 0;
+		char *path = kf->kf_path;
+		char str[sizeof(kf->kf_path)];
+		str[0] = 0;
+		switch (kf->kf_type) {
+		case KF_TYPE_VNODE:
+			type = 'v';
+			break;
 		case KF_TYPE_SOCKET:
 			type = 's';
-#if __FreeBSD_version < 1200031
-			if (kve->kf_sock_domain == AF_LOCAL) {
-				struct sockaddr_un *sun =
-					(struct sockaddr_un *)&kve->kf_sa_local;
-				if (sun->sun_path[0] != 0)
-					addr_to_string(&kve->kf_sa_local, path, sizeof(path));
-				else
-					addr_to_string(&kve->kf_sa_peer, path, sizeof(path));
+			if (kf->kf_sock_domain == AF_LOCAL) {
+				struct sockaddr_un *un = (struct sockaddr_un *)&kf->kf_sa_local;
+				if (un->sun_path[0] != 0) {
+					addr_to_string(&kf->kf_sa_local, str, sizeof(str));
+				} else {
+					addr_to_string(&kf->kf_sa_peer, str, sizeof(str));
+				}
 			} else {
-				addr_to_string(&kve->kf_sa_local, path, sizeof(path));
-				strcat(path, " ");
-				addr_to_string(&kve->kf_sa_peer, path + strlen(path),
-					sizeof(path));
+				addr_to_string(&kf->kf_sa_local, str, sizeof(str));
+				rz_str_ncat(str, " ", sizeof(str));
+				addr_to_string(&kf->kf_sa_peer, str + strlen(str), sizeof(str) - strlen(str));
 			}
-#else
-			if (kve->kf_sock_domain == AF_LOCAL) {
-				struct sockaddr_un *sun =
-					(struct sockaddr_un *)&kve->kf_un.kf_sock.kf_sa_local;
-				if (sun->sun_path[0] != 0)
-					addr_to_string(&kve->kf_un.kf_sock.kf_sa_local, path, sizeof(path));
-				else
-					addr_to_string(&kve->kf_un.kf_sock.kf_sa_peer, path, sizeof(path));
-			} else {
-				addr_to_string(&kve->kf_un.kf_sock.kf_sa_local, path, sizeof(path));
-				strcat(path, " ");
-				addr_to_string(&kve->kf_un.kf_sock.kf_sa_peer, path + strlen(path),
-					sizeof(path));
-			}
-#endif
-			str = path;
+			path = str;
 			break;
-		case KF_TYPE_PIPE: type = 'p'; break;
-		case KF_TYPE_FIFO: type = 'f'; break;
-		case KF_TYPE_KQUEUE: type = 'k'; break;
-#if __FreeBSD_version < 1300130
-		// removed in https://reviews.freebsd.org/D27302
-		case KF_TYPE_CRYPTO: type = 'c'; break;
-#endif
-		case KF_TYPE_MQUEUE: type = 'm'; break;
-		case KF_TYPE_SHM: type = 'h'; break;
-		case KF_TYPE_PTS: type = 't'; break;
-		case KF_TYPE_SEM: type = 'e'; break;
+		case KF_TYPE_PIPE:
+			type = 'p';
+			break;
+		case KF_TYPE_FIFO:
+			type = 'f';
+			break;
+		case KF_TYPE_KQUEUE:
+			type = 'k';
+			break;
+		case KF_TYPE_MQUEUE:
+			type = 'm';
+			break;
+		case KF_TYPE_SHM:
+			type = 'h';
+			break;
+		case KF_TYPE_PTS:
+			type = 't';
+			break;
+		case KF_TYPE_SEM:
+			type = 'e';
+			break;
 		case KF_TYPE_NONE:
+		case KF_TYPE_PROC:
 		case KF_TYPE_UNKNOWN:
-		default: type = '-'; break;
+		default:
+			type = '-';
+			break;
 		}
-		perm = (kve->kf_flags & KF_FLAG_READ) ? RZ_PERM_R : 0;
-		perm |= (kve->kf_flags & KF_FLAG_WRITE) ? RZ_PERM_W : 0;
-		desc = rz_debug_desc_new(kve->kf_fd, str, perm, type, kve->kf_offset);
+		perm = (kf->kf_flags & KF_FLAG_READ) ? RZ_PERM_R : 0;
+		perm |= (kf->kf_flags & KF_FLAG_WRITE) ? RZ_PERM_W : 0;
+		RzDebugDesc *desc = rz_debug_desc_new(kf->kf_fd, path, perm, type, kf->kf_offset);
 		if (!desc) {
 			break;
 		}
@@ -390,12 +366,11 @@ static int get_rz_status(int stat) {
 	}
 }
 
-static RzList *kfbsd_thread_list(RzDebug *dbg, int pid, RzList *list) {
+RZ_OWN RzList /*<RzDebugPid *>*/ *bsd_thread_list(RZ_NONNULL RzDebug *dbg, int pid, RZ_NONNULL RzList /*<RzDebugPid *>*/ *list) {
+	rz_return_val_if_fail(dbg && list, NULL);
 	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID | KERN_PROC_INC_THREAD, pid };
 	struct kinfo_proc *kp;
 	size_t len = 0;
-	size_t max;
-	int i = 0;
 
 	if (sysctl(mib, 4, NULL, &len, NULL, 0) == -1) {
 		rz_list_free(list);
@@ -404,27 +379,26 @@ static RzList *kfbsd_thread_list(RzDebug *dbg, int pid, RzList *list) {
 
 	len += sizeof(*kp) + len / 10;
 	kp = malloc(len);
+	if (!kp) {
+		rz_list_free(list);
+		return NULL;
+	}
 	if (sysctl(mib, 4, kp, &len, NULL, 0) == -1) {
 		free(kp);
 		rz_list_free(list);
 		return NULL;
 	}
 
-	max = len / sizeof(*kp);
-	for (i = 0; i < max; i++) {
+	size_t max = len / sizeof(*kp);
+	for (size_t i = 0; i < max; i++) {
 		int pid_stat = get_rz_status(kp[i].ki_stat);
-
 		RzDebugPid *pid_info = rz_debug_pid_new(kp[i].ki_comm, kp[i].ki_tid,
-			kp[i].ki_uid, pid_stat, (ut64)kp[i].ki_wchan);
-
-		rz_list_append(list, pid_info);
+			kp[i].ki_uid, pid_stat, (ut64)(size_t)kp[i].ki_wchan);
+		if (pid_info) {
+			rz_list_append(list, pid_info);
+		}
 	}
 
 	free(kp);
 	return list;
-}
-
-RzList *bsd_thread_list(RzDebug *dbg, int pid, RzList *list) {
-	RzList *thread_list = kfbsd_thread_list(dbg, pid, list);
-	return thread_list;
 }

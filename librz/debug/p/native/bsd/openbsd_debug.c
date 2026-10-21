@@ -7,32 +7,80 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <sys/sysctl.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/un.h>
 #include <arpa/inet.h>
-#include <kvm.h>
-#include <limits.h>
+#include <sys/un.h>
+#include <sys/file.h>
+#include <sys/fcntl.h>
+#include <sys/sysctl.h>
+#include <sys/proc.h>
 #include <sys/ptrace.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <kvm.h>
 #include <limits.h>
-#include "bsd_debug.h"
 #include <rz_util/rz_log.h>
-#include <sys/proc.h>
+#include "bsd_debug.h"
 
-int bsd_handle_signals(RzDebug *dbg) {
-	return -1;
+int bsd_handle_signals(RZ_NONNULL RzDebug *dbg) {
+	rz_return_val_if_fail(dbg, -1);
+	ptrace_state_t state = { 0 };
+	if (ptrace(PT_GET_PROCESS_STATE, dbg->pid, (caddr_t)&state, sizeof(state)) == -1) {
+		if (errno == ESRCH) {
+			dbg->reason.type = RZ_DEBUG_REASON_DEAD;
+			return 0;
+		}
+		rz_sys_perror("ptrace PT_GET_PROCESS_STATE");
+		return -1;
+	}
+
+	if (state.pe_tid > 0) {
+		dbg->reason.tid = state.pe_tid;
+	}
+
+	switch (state.pe_report_event) {
+	case PTRACE_FORK:
+	case PTRACE_VFORK:
+		dbg->forked_pid = state.pe_other_pid;
+		dbg->reason.type = RZ_DEBUG_REASON_NEW_PID;
+		return 0;
+#ifdef PTRACE_LWP_CREATE
+	case PTRACE_LWP_CREATE:
+		dbg->reason.type = RZ_DEBUG_REASON_NEW_TID;
+		return 0;
+#endif
+#ifdef PTRACE_LWP_EXIT
+	case PTRACE_LWP_EXIT:
+		dbg->reason.type = RZ_DEBUG_REASON_EXIT_TID;
+		return 0;
+#endif
+	default:
+		break;
+	}
+
+	switch (dbg->reason.signum) {
+	case SIGTRAP:
+		dbg->reason.type = RZ_DEBUG_REASON_BREAKPOINT;
+		break;
+	case SIGABRT:
+		dbg->reason.type = RZ_DEBUG_REASON_ABORT;
+		break;
+	case SIGSEGV:
+		dbg->reason.type = RZ_DEBUG_REASON_SEGFAULT;
+		break;
+	default:
+		dbg->reason.type = RZ_DEBUG_REASON_SIGNAL;
+		break;
+	}
+
+	return 0;
 }
 
-int bsd_reg_write(RzDebug *dbg, int type, const ut8 *buf, int size) {
+int bsd_reg_write(RZ_NONNULL RzDebug *dbg, int type, RZ_NONNULL const ut8 *buf, int size) {
+	rz_return_val_if_fail(dbg && buf, false);
+	(void)size;
 	int r = -1;
 	switch (type) {
 	case RZ_REG_TYPE_GPR:
-		r = ptrace(PT_SETREGS, dbg->pid,
-			(caddr_t)buf, sizeof(struct reg));
+		r = ptrace(PT_SETREGS, dbg->pid, (caddr_t)buf, sizeof(struct reg));
 		break;
 	case RZ_REG_TYPE_DRX:
 		break;
@@ -41,17 +89,22 @@ int bsd_reg_write(RzDebug *dbg, int type, const ut8 *buf, int size) {
 		break;
 	}
 
-	return (r == 0 ? true : false);
+	return r == 0;
 }
 
-bool bsd_generate_corefile(RzDebug *dbg, char *path, RzBuffer *dest) {
+bool bsd_generate_corefile(RZ_NONNULL RzDebug *dbg, RZ_NONNULL char *path, RZ_NULLABLE RzBuffer *dest) {
+	(void)dbg;
+	(void)path;
+	(void)dest;
 	return false;
 }
 
-RzDebugInfo *bsd_info(RzDebug *dbg, const char *arg) {
+RZ_OWN RzDebugInfo *bsd_info(RZ_NONNULL RzDebug *dbg, RZ_NULLABLE const char *arg) {
+	rz_return_val_if_fail(dbg, NULL);
+	(void)arg;
 	struct kinfo_proc *kp;
 	char err[_POSIX2_LINE_MAX];
-	int rc;
+	int rc = 0;
 	RzDebugInfo *rdi = RZ_NEW0(RzDebugInfo);
 	if (!rdi) {
 		return NULL;
@@ -64,7 +117,7 @@ RzDebugInfo *bsd_info(RzDebug *dbg, const char *arg) {
 	}
 
 	kp = kvm_getprocs(kd, KERN_PROC_PID, dbg->pid, sizeof(*kp), &rc);
-	if (kp) {
+	if (kp && rc > 0) {
 		rdi->pid = dbg->pid;
 		rdi->tid = dbg->tid;
 		rdi->uid = kp->p_uid;
@@ -77,6 +130,9 @@ RzDebugInfo *bsd_info(RzDebug *dbg, const char *arg) {
 			break;
 		case SSTOP:
 			rdi->status = RZ_DBG_PROC_STOP;
+			break;
+		case SZOMB:
+			rdi->status = RZ_DBG_PROC_ZOMBIE;
 			break;
 		case SSLEEP:
 			rdi->status = RZ_DBG_PROC_SLEEP;
@@ -92,35 +148,27 @@ RzDebugInfo *bsd_info(RzDebug *dbg, const char *arg) {
 	return rdi;
 }
 
-RzList *bsd_pid_list(RzDebug *dbg, int pid, RzList *list) {
-#define KVM_OPEN_FLAG KVM_NO_FILES
-#define KVM_GETPROCS(kd, opt, arg, cntptr) \
-	kvm_getprocs(kd, opt, arg, sizeof(struct kinfo_proc), cntptr)
-#define KP_COMM(x) (x)->p_comm
-#define KP_PID(x)  (x)->p_pid
-#define KP_PPID(x) (x)->p_ppid
-#define KP_UID(x)  (x)->p_uid
-#define KINFO_PROC kinfo_proc
-
+RZ_OWN RzList /*<RzDebugPid *>*/ *bsd_pid_list(RZ_NONNULL RzDebug *dbg, int pid, RZ_NONNULL RzList /*<RzDebugPid *>*/ *list) {
+	rz_return_val_if_fail(dbg && list, NULL);
 	char errbuf[_POSIX2_LINE_MAX];
-	struct KINFO_PROC *kp, *entry;
+	struct kinfo_proc *kp, *entry;
 	int cnt = 0;
-	int i;
 
-	kvm_t *kd = kvm_openfiles(NULL, NULL, NULL, KVM_OPEN_FLAG, errbuf);
+	kvm_t *kd = kvm_openfiles(NULL, NULL, NULL, KVM_NO_FILES, errbuf);
 	if (!kd) {
 		RZ_LOG_ERROR("kvm_openfiles failed: %s\n", errbuf);
+		rz_list_free(list);
 		return NULL;
 	}
 
-	kp = KVM_GETPROCS(kd, KERN_PROC_ALL, 0, &cnt);
-	for (i = 0; i < cnt; i++) {
+	kp = kvm_getprocs(kd, KERN_PROC_ALL, 0, sizeof(struct kinfo_proc), &cnt);
+	for (int i = 0; i < cnt; i++) {
 		entry = kp + i;
-		// Unless pid 0 is requested, only add the requested pid and it's child processes
-		if (0 == pid || KP_PID(entry) == pid || KP_PPID(entry) == pid) {
-			RzDebugPid *p = rz_debug_pid_new(KP_COMM(entry), KP_PID(entry), KP_UID(entry), 's', 0);
+		// Unless pid 0 is requested, only add the requested pid and its child processes
+		if (pid == 0 || entry->p_pid == pid || entry->p_ppid == pid) {
+			RzDebugPid *p = rz_debug_pid_new(entry->p_comm, entry->p_pid, entry->p_uid, 's', 0);
 			if (p) {
-				p->ppid = KP_PPID(entry);
+				p->ppid = entry->p_ppid;
 				rz_list_append(list, p);
 			}
 		}
@@ -130,44 +178,29 @@ RzList *bsd_pid_list(RzDebug *dbg, int pid, RzList *list) {
 	return list;
 }
 
-RzList *bsd_native_sysctl_map(RzDebug *dbg) {
-	int mib[3];
-	size_t len;
-	struct kinfo_vmentry entry;
+RZ_OWN RzList /*<RzDebugMap *>*/ *bsd_native_sysctl_map(RZ_NONNULL RzDebug *dbg) {
+	rz_return_val_if_fail(dbg, NULL);
+	struct kinfo_vmentry entry = { 0 };
+	size_t len = sizeof(entry);
+	int mib[3] = { CTL_KERN, KERN_PROC_VMMAP, dbg->pid };
 	u_long old_end = 0;
-	RzList *list = NULL;
-	RzDebugMap *map;
-	u_long map_start = 0;
-	u_long map_end = 0;
-	ut64 offset = 0;
-	int perm = 0;
-
-	len = sizeof(entry);
-	mib[0] = CTL_KERN;
-	mib[1] = KERN_PROC_VMMAP;
-	mib[2] = dbg->pid;
-	entry.kve_start = 0;
 
 	if (sysctl(mib, 3, &entry, &len, NULL, 0) == -1) {
 		RZ_LOG_ERROR("Could not get memory map: %s\n", strerror(errno));
 		return NULL;
 	}
 
-	list = rz_debug_map_list_new();
-	if (!list)
+	RzList *list = rz_debug_map_list_new();
+	if (!list) {
 		return NULL;
+	}
 
 	while (sysctl(mib, 3, &entry, &len, NULL, 0) != -1) {
 		if (old_end == entry.kve_end) {
 			/* No more entries */
 			break;
 		}
-		/* path to vm obj is not included in kinfo_vmentry.
-		 * see usr.sbin/procmap for namei-cache lookup.
-		 */
-		map_start = entry.kve_start;
-		map_end = entry.kve_end;
-
+		int perm = 0;
 		if (entry.kve_protection & KVE_PROT_READ) {
 			perm |= RZ_PERM_R;
 		}
@@ -178,8 +211,8 @@ RzList *bsd_native_sysctl_map(RzDebug *dbg) {
 			perm |= RZ_PERM_X;
 		}
 
-		map = rz_debug_map_new("", map_start, map_end,
-			perm, 0);
+		char empty_name[] = "";
+		RzDebugMap *map = rz_debug_map_new(empty_name, entry.kve_start, entry.kve_end, perm, 0);
 		if (!map) {
 			break;
 		}
@@ -193,8 +226,93 @@ RzList *bsd_native_sysctl_map(RzDebug *dbg) {
 	return list;
 }
 
-RzList *bsd_desc_list(int pid) {
-	return NULL;
+RZ_OWN RzList /*<RzDebugDesc *>*/ *bsd_desc_list(int pid) {
+	char errbuf[_POSIX2_LINE_MAX];
+	int cnt = 0;
+
+	kvm_t *kd = kvm_openfiles(NULL, NULL, NULL, KVM_NO_FILES, errbuf);
+	if (!kd) {
+		RZ_LOG_ERROR("kvm_openfiles failed: %s\n", errbuf);
+		return NULL;
+	}
+
+	struct kinfo_file *kf = kvm_getfiles(kd, KERN_FILE_BYPID, pid, sizeof(struct kinfo_file), &cnt);
+	if (!kf) {
+		kvm_close(kd);
+		return NULL;
+	}
+
+	RzList *ret = rz_list_newf((RzListFree)rz_debug_desc_free);
+	if (!ret) {
+		kvm_close(kd);
+		return NULL;
+	}
+
+	for (int i = 0; i < cnt; i++) {
+		if (kf[i].fd_fd < 0) {
+			continue;
+		}
+		int type = '-';
+		char path[512];
+		path[0] = '\0';
+
+		switch (kf[i].f_type) {
+		case DTYPE_VNODE:
+			type = 'v';
+			rz_str_ncpy(path, kf[i].f_mntonname, sizeof(path));
+			break;
+		case DTYPE_SOCKET:
+			type = 's';
+			if (kf[i].so_family == AF_UNIX) {
+				rz_str_ncpy(path, kf[i].unp_path, sizeof(path));
+			} else if (kf[i].so_family == AF_INET) {
+				char laddr[INET_ADDRSTRLEN] = { 0 };
+				char faddr[INET_ADDRSTRLEN] = { 0 };
+				struct in_addr in_l = { .s_addr = kf[i].inp_laddru[0] };
+				struct in_addr in_f = { .s_addr = kf[i].inp_faddru[0] };
+				inet_ntop(AF_INET, &in_l, laddr, sizeof(laddr));
+				inet_ntop(AF_INET, &in_f, faddr, sizeof(faddr));
+				snprintf(path, sizeof(path), "%s:%u %s:%u",
+					laddr, ntohs((uint16_t)kf[i].inp_lport),
+					faddr, ntohs((uint16_t)kf[i].inp_fport));
+			} else if (kf[i].so_family == AF_INET6) {
+				char laddr[INET6_ADDRSTRLEN] = { 0 };
+				char faddr[INET6_ADDRSTRLEN] = { 0 };
+				inet_ntop(AF_INET6, kf[i].inp_laddru, laddr, sizeof(laddr));
+				inet_ntop(AF_INET6, kf[i].inp_faddru, faddr, sizeof(faddr));
+				snprintf(path, sizeof(path), "[%s]:%u [%s]:%u",
+					laddr, ntohs((uint16_t)kf[i].inp_lport),
+					faddr, ntohs((uint16_t)kf[i].inp_fport));
+			}
+			break;
+		case DTYPE_PIPE:
+			type = 'p';
+			break;
+		case DTYPE_KQUEUE:
+			type = 'k';
+			break;
+		default:
+			type = '-';
+			break;
+		}
+
+		int perm = 0;
+		if (kf[i].f_flag & FREAD) {
+			perm |= RZ_PERM_R;
+		}
+		if (kf[i].f_flag & FWRITE) {
+			perm |= RZ_PERM_W;
+		}
+
+		RzDebugDesc *desc = rz_debug_desc_new(kf[i].fd_fd, path, perm, type, kf[i].f_offset);
+		if (!desc) {
+			break;
+		}
+		rz_list_append(ret, desc);
+	}
+
+	kvm_close(kd);
+	return ret;
 }
 
 static int get_rz_status(int stat) {
@@ -214,41 +332,38 @@ static int get_rz_status(int stat) {
 	}
 }
 
-static RzList *openbsd_thread_list(RzDebug *dbg, int pid, RzList *list) {
-	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, pid };
-	struct kinfo_proc *kp;
-	size_t len = 0;
-	size_t max;
-	int i = 0;
+RZ_OWN RzList /*<RzDebugPid *>*/ *bsd_thread_list(RZ_NONNULL RzDebug *dbg, int pid, RZ_NONNULL RzList /*<RzDebugPid *>*/ *list) {
+	rz_return_val_if_fail(dbg && list, NULL);
+	char errbuf[_POSIX2_LINE_MAX];
+	int cnt = 0;
 
-	if (sysctl(mib, 4, NULL, &len, NULL, 0) == -1) {
+	kvm_t *kd = kvm_openfiles(NULL, NULL, NULL, KVM_NO_FILES, errbuf);
+	if (!kd) {
+		RZ_LOG_ERROR("kvm_openfiles failed: %s\n", errbuf);
 		rz_list_free(list);
 		return NULL;
 	}
 
-	len += sizeof(*kp) + len / 10;
-	kp = malloc(len);
-	if (sysctl(mib, 4, kp, &len, NULL, 0) == -1) {
-		free(kp);
+	struct kinfo_proc *kp = kvm_getprocs(kd, KERN_PROC_PID | KERN_PROC_SHOW_THREADS,
+		pid, sizeof(*kp), &cnt);
+	if (!kp) {
+		kvm_close(kd);
 		rz_list_free(list);
 		return NULL;
 	}
 
-	max = len / sizeof(*kp);
-	for (i = 0; i < max; i++) {
+	for (int i = 0; i < cnt; i++) {
+		if (kp[i].p_tid == -1) {
+			continue;
+		}
 		int pid_stat = get_rz_status(kp[i].p_stat);
-
 		RzDebugPid *pid_info = rz_debug_pid_new(kp[i].p_comm, kp[i].p_tid,
 			kp[i].p_uid, pid_stat, (ut64)kp[i].p_wchan);
-
-		rz_list_append(list, pid_info);
+		if (pid_info) {
+			rz_list_append(list, pid_info);
+		}
 	}
 
-	free(kp);
+	kvm_close(kd);
 	return list;
-}
-
-RzList *bsd_thread_list(RzDebug *dbg, int pid, RzList *list) {
-	RzList *thread_list = openbsd_thread_list(dbg, pid, list);
-	return thread_list;
 }

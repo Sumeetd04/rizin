@@ -196,21 +196,44 @@ RZ_API ut64 rz_debug_get_tls(RZ_NONNULL RzDebug *dbg, int tid) {
 }
 
 static int bsd_reg_read(RzDebug *dbg, int type, ut8 *buf, int size) {
-	int showfpu = false;
 	int pid = dbg->pid;
 	int ret;
 	if (type < -1) {
-		showfpu = true; // hack for debugging
 		type = -type;
 	}
 	switch (type) {
 	case RZ_REG_TYPE_DRX:
+#if __i386__ || __x86_64__
+	{
+		struct dbreg dbr;
+		ret = ptrace(PT_GETDBREGS, pid, (caddr_t)&dbr, sizeof(dbr));
+		if (ret != 0) {
+			return false;
+		}
+		if (sizeof(dbr) < (size_t)size) {
+			size = sizeof(dbr);
+		}
+		memcpy(buf, &dbr, size);
+		return sizeof(dbr);
+	}
+#endif
 		return true;
-		break;
 	case RZ_REG_TYPE_FPU:
 	case RZ_REG_TYPE_MMX:
-	case RZ_REG_TYPE_XMM:
-		break;
+	case RZ_REG_TYPE_XMM: {
+		struct fpreg fpregs;
+		memset(&fpregs, 0, sizeof(fpregs));
+		memset(buf, 0, size);
+		ret = ptrace(PT_GETFPREGS, pid, (caddr_t)&fpregs, sizeof(fpregs));
+		if (ret != 0) {
+			return false;
+		}
+		if (sizeof(fpregs) < (size_t)size) {
+			size = sizeof(fpregs);
+		}
+		memcpy(buf, &fpregs, size);
+		return sizeof(fpregs);
+	}
 	case RZ_REG_TYPE_SEG:
 	case RZ_REG_TYPE_FLG:
 	case RZ_REG_TYPE_GPR: {
@@ -222,13 +245,15 @@ static int bsd_reg_read(RzDebug *dbg, int type, ut8 *buf, int size) {
 		// process exists still.. is because there's a
 		// missing call to 'wait'. and the process is not
 		// yet available to accept more ptrace queries.
-		if (ret != 0)
+		if (ret != 0) {
 			return false;
-		if (sizeof(regs) < size)
+		}
+		if (sizeof(regs) < (size_t)size) {
 			size = sizeof(regs);
+		}
 		memcpy(buf, &regs, size);
 		return sizeof(regs);
-	} break;
+	}
 	}
 	return true;
 }
@@ -288,6 +313,12 @@ static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 	if (dbg->pid == -1) {
 		return NULL;
 	}
+
+	list = bsd_native_sysctl_map(dbg);
+	if (list) {
+		return list;
+	}
+
 	/* prepend 0x prefix */
 	region[0] = region2[0] = '0';
 	region[1] = region2[1] = 'x';
@@ -336,6 +367,7 @@ static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 			RZ_LOG_ERROR("%s: Unable to parse \"%s\"\n", __func__, path);
 			RZ_LOG_ERROR("%s: problematic line: %s\n", __func__, line);
 			rz_list_free(list);
+			fclose(fd);
 			return NULL;
 		}
 
@@ -372,6 +404,7 @@ static RzList /*<RzDebugMap *>*/ *rz_debug_native_map_get(RzDebug *dbg) {
 		if (!map) {
 			break;
 		}
+		map->shared = map_is_shared;
 		map->file = rz_str_dup(name);
 		rz_list_append(list, map);
 	}

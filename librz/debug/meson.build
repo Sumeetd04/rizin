@@ -122,7 +122,12 @@ if has_debugger
   # FreeBSD OS
   elif host_machine.system() == 'freebsd'
     if host_machine.cpu_family() == 'x86' or host_machine.cpu_family() == 'x86_64' or host_machine.cpu_family() == 'aarch64'
-      rz_debug_sources += ['p/native/kfbsd.c']
+      rz_debug_sources += [
+        'p/native/kfbsd.c',
+        'p/native/bsd/kfbsd_debug.c',
+      ]
+      rz_debug_deps += cc.find_library('util', required: true, static: is_static_build)
+      rz_debug_deps += cc.find_library('kvm', required: true, static: is_static_build)
     else
       rz_debug_sources += ['p/native/unsupported.c']
     endif
@@ -130,7 +135,11 @@ if has_debugger
   # OpenBSD OS
   elif host_machine.system() == 'openbsd'
     if host_machine.cpu_family() == 'x86_64'
-      rz_debug_sources += ['p/native/openbsd.c']
+      rz_debug_sources += [
+        'p/native/openbsd.c',
+        'p/native/bsd/openbsd_debug.c',
+      ]
+      rz_debug_deps += cc.find_library('kvm', required: true, static: is_static_build)
     else
       rz_debug_sources += ['p/native/unsupported.c']
     endif
@@ -138,7 +147,11 @@ if has_debugger
   # NetBSD OS
   elif host_machine.system() == 'netbsd'
     if host_machine.cpu_family() == 'x86' or host_machine.cpu_family() == 'x86_64'
-      rz_debug_sources += ['p/native/netbsd.c']
+      rz_debug_sources += [
+        'p/native/netbsd.c',
+        'p/native/bsd/netbsd_debug.c',
+      ]
+      rz_debug_deps += cc.find_library('kvm', required: true, static: is_static_build)
     else
       rz_debug_sources += ['p/native/unsupported.c']
     endif
@@ -146,7 +159,11 @@ if has_debugger
   # DragonFlyBSD OS
   elif host_machine.system() == 'dragonfly'
     if host_machine.cpu_family() == 'x86_64'
-      rz_debug_sources += ['p/native/dragonfly.c']
+      rz_debug_sources += [
+        'p/native/dragonfly.c',
+        'p/native/bsd/dragonfly_debug.c',
+      ]
+      rz_debug_deps += cc.find_library('kvm', required: true, static: is_static_build)
     else
       rz_debug_sources += ['p/native/unsupported.c']
     endif
@@ -196,21 +213,6 @@ if has_debugger
       'p/native/xnu/xnu_excthreads.c',
       'p/native/xnu/xnu_threads.c',
     ]
-  endif
-
-  if host_machine.system() == 'freebsd'
-    rz_debug_deps += cc.find_library('util', required: true, static: is_static_build)
-    rz_debug_sources += ['p/native/bsd/kfbsd_debug.c']
-  elif host_machine.system() == 'netbsd'
-    rz_debug_sources += ['p/native/bsd/netbsd_debug.c']
-  elif host_machine.system() == 'openbsd'
-    rz_debug_sources += ['p/native/bsd/openbsd_debug.c']
-  elif host_machine.system() == 'dragonfly'
-    rz_debug_sources += ['p/native/bsd/bsd_debug.c']
-  endif
-
-  if ['netbsd', 'openbsd', 'freebsd', 'dragonfly'].contains(host_machine.system())
-    rz_debug_deps += cc.find_library('kvm', required: true, static: is_static_build)
   endif
 endif
 

@@ -54,7 +54,7 @@ EOF
 EXPECT=<<EOF
 - usr 4K s r-- /home/build/rizin-testbins/elf/hello-freebsd-x64 /home/build/rizin-testbins/elf/hello-freebsd-x64 home_build_rizin_testbins_elf_hello_freebsd_x64.r
 - usr 4K s r-x /home/build/rizin-testbins/elf/hello-freebsd-x64 /home/build/rizin-testbins/elf/hello-freebsd-x64 home_build_rizin_testbins_elf_hello_freebsd_x64.r_x
-- usr 4K s rwx /home/build/rizin-testbins/elf/hello-freebsd-x64 /home/build/rizin-testbins/elf/hello-freebsd-x64 home_build_rizin_testbins_elf_hello_freebsd_x64.rwx
+- usr 4K s rw- /home/build/rizin-testbins/elf/hello-freebsd-x64 /home/build/rizin-testbins/elf/hello-freebsd-x64 home_build_rizin_testbins_elf_hello_freebsd_x64.rw
 EOF
 RUN
 
@@ -68,10 +68,10 @@ EOF
 EXPECT=<<EOF
 4096 home_build_rizin_testbins_elf_hello_freebsd_x64.r
 4096 home_build_rizin_testbins_elf_hello_freebsd_x64.r_x
-4096 home_build_rizin_testbins_elf_hello_freebsd_x64.rwx
+4096 home_build_rizin_testbins_elf_hello_freebsd_x64.rw
 /home/build/rizin-testbins/elf/hello-freebsd-x64 r--   4K
 /home/build/rizin-testbins/elf/hello-freebsd-x64 r-x   4K
-/home/build/rizin-testbins/elf/hello-freebsd-x64 rwx   4K
+/home/build/rizin-testbins/elf/hello-freebsd-x64 rw-   4K
 EOF
 RUN
 
