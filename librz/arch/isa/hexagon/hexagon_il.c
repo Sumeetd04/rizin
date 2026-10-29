@@ -204,12 +204,17 @@ RZ_IPI bool hex_shuffle_insns(RZ_INOUT HexPkt *p) {
 	} while (changed);
 
 	/*
-	 * If we have a .new register compare/branch, move that to the very
-	 * very end, past stores
-	 */
+	* If we have a .new register compare/branch, move that to the very
+	* very end, past stores
+	*
+	* Do not move .new branches here. Branches must keep their relative
+	* program order, otherwise dual jumps get reordered and the first jump
+	* ends up executing last (see rizinorg/rizin#6974).
+	*/
 	for (i = 0; i < last_insn; i++) {
 		op = (HexILOp *)rz_pvector_at(ops, i);
-		if (op->attr & HEX_IL_INSN_ATTR_NEW) {
+		if ((op->attr & HEX_IL_INSN_ATTR_NEW) &&
+			!(op->attr & HEX_IL_INSN_ATTR_BRANCH)) {
 			hex_send_insn_to_i(ops, i, last_insn);
 			break;
 		}
