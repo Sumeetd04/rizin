@@ -370,6 +370,11 @@ static bool value_indicates_ret_addr_write(RzAbsIntRunContext *ctx, RzAbsIntVal 
 	return ret;
 }
 
+// True if a load of n_bits reads one full pointer on the current architecture.
+static bool is_pointer_sized_read(RzAbsIntRunContext *ctx, size_t n_bits) {
+	return n_bits == ctx->inst->il_ctx->config->mem_key_size;
+}
+
 static EvalResult eval_pure(RzAbsIntRunContext *ctx, const RzILOpPure *pure, RZ_OUT RzAbsIntVal *out) {
 #define EVAL_SUB_OR_RETURN_CLEANUP(op, out, cleanup) \
 	do { \
@@ -554,6 +559,10 @@ static EvalResult eval_pure(RzAbsIntRunContext *ctx, const RzILOpPure *pure, RZ_
 		report_yield_xref(ctx, 0, ctx->insn_addr, out, RZ_ANALYSIS_XREF_TYPE_MEM_READ);
 		size_t n_bits = pure->code == RZ_IL_OP_LOAD ? 8 : pure->op.loadw.n_bits;
 		EvalResult res = load_abstr_data(ctx->inst, mem_idx, &ld_addr, n_bits, out);
+		if (res == EVAL_RESULT_OK && interp_is_analyzing(ctx) && is_pointer_sized_read(ctx, n_bits)) {
+			// Pointer-sized read: `out` now holds the candidate address of a string.
+			// String detection will go here in the next step.
+		}
 		rz_bv_fini(&ld_addr);
 		if (res == EVAL_RESULT_BREAK) {
 			return EVAL_RESULT_BREAK;
