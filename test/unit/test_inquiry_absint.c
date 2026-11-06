@@ -823,6 +823,65 @@ bool test_absint_comments(void) {
 	mu_end;
 }
 
+// Fake memory for the string test:
+// - at 0x20008 the program finds a pointer to 0x30000
+// - at 0x30000 there is the text "Hello, world!"
+static RzAbsIntIOReadResult io_read_string(RzAbsIntIOReadRequest *req, void *user) {
+        ut64 addr = rz_bv_to_ut64(req->addr);
+        if (addr == 0x20008) {
+                rz_bv_set_from_ut64(req->ld_data, 0x30000);
+                return RZ_ABSINT_IO_READ_RESULT_OK;
+        }
+        if (addr == 0x30000) {
+                ut8 buf[256] = { 0 };
+                memcpy(buf, "Hello, world!", strlen("Hello, world!"));
+                // req->n_bits is in bits, as rz_bv_set_from_bytes_le expects
+                rz_bv_set_from_bytes_le(req->ld_data, buf, 0, req->n_bits);
+                return RZ_ABSINT_IO_READ_RESULT_OK;
+        }
+        return RZ_ABSINT_IO_READ_RESULT_TOP;
+}
+
+bool test_absint_string_xref(void) {
+        TestInterp *interp = interp_new("arm", 64, 0x10000, "hex://" // clang-format off
+                "600880d2"  // 0x00  mov   x0, 0x43
+                "a9000054"  // 0x04  b.ls  0x18      ------
+                "81000090"  // 0x08  adrp  x1, 0x20000     |
+                "230440f9"  // 0x0c  ldr   x3, [x1, 8]     |
+                "200800f9"  // 0x10  str   x0, [x1, 0x10]  |
+                "fb030094"  // 0x14  bl    0x1000          |
+                "400880d2"  // 0x18  mov   x0, 0x42  <-----
+                "c0035fd6"  // 0x1c  ret
+                // clang-format on
+        );
+        mu_assert_notnull(interp, "init");
+
+        // Swap in the test's memory callback. The default one returns TOP (no data).
+        rz_absint_instance_free(interp->inst);
+        RzAbsIntConfig config = {
+                .val_domain = rz_absint_builtin_value_domain(RZ_ABSINT_VALUE_DOMAIN_CONST),
+                .cb_user = interp,
+                .io_read = io_read_string,
+                .lift_block = lift_block
+        };
+        interp->inst = rz_absint_instance_new(interp->analysis, &config);
+        mu_assert_notnull(interp->inst, "instance");
+
+        RzAbsIntResult *res = NULL;
+        RzAbsIntResultCode code = rz_absint_run(interp->inst, 0x10000, RZ_ABSINT_RESULT_DIMEN_COMMENTS, &res);
+        mu_assert_eq(code, RZ_ABSINT_RESULT_OK, "run");
+        mu_assert_notnull(res, "result");
+
+        // The ldr at 0x1000c loads the pointer; the string check should add a comment there.
+        const char *cmt = ht_up_find(res->comments, 0x1000c, NULL);
+        mu_assert_notnull(cmt, "comment at ldr");
+        mu_assert_notnull(strstr(cmt, "str: \"Hello, world!\""), "string comment");
+
+        rz_absint_result_free(interp->inst, res);
+        interp_free(interp);
+        mu_end;
+}
+
 bool test_absint_driver(size_t n_threads) {
 	RzCons *cons = rz_cons_new(); // TODOe: we need this?
 	RzAnalysis *analysis = rz_analysis_new(NULL);
@@ -898,6 +957,7 @@ bool all_tests() {
 	mu_run_test(test_absint_cfg_merge_multiple_consecutive);
 	mu_run_test(test_absint_xrefs);
 	mu_run_test(test_absint_comments);
+	mu_run_test(test_absint_string_xref);
 	mu_run_test(test_absint_driver, 1);
 	mu_run_test(test_absint_driver, 8);
 	return tests_passed != tests_run;
