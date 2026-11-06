@@ -375,6 +375,68 @@ static bool is_pointer_sized_read(RzAbsIntRunContext *ctx, size_t n_bits) {
 	return n_bits == ctx->inst->il_ctx->config->mem_key_size;
 }
 
+#define STR_CHECK_LEN 256
+
+// Reads memory at the pointer value `ptr` and records a comment if a string is found there.
+static EvalResult check_string_at_pointer(RzAbsIntRunContext *ctx, const RzAbsIntVal *ptr) {
+	RzBitVector ptr_bv;
+	rz_bv_init(&ptr_bv, 64);
+	if (!val_domain(ctx->inst)->to_concrete_const(ptr, &ptr_bv)) {
+		// The pointer is not a known constant, so there is no address to check.
+		rz_bv_fini(&ptr_bv);
+		return EVAL_RESULT_OK;
+	}
+	ut64 addr = rz_bv_to_ut64(&ptr_bv);
+	rz_bv_fini(&ptr_bv);
+
+	RzBitVector addr_bv;
+	rz_bv_init(&addr_bv, 64);
+	rz_bv_set_from_ut64(&addr_bv, addr);
+
+	RzBitVector mem_bv;
+	rz_bv_init(&mem_bv, STR_CHECK_LEN * 8);
+	RzAbsIntIOReadRequest io_req = { 0 };
+	io_req.addr = &addr_bv;
+	io_req.ld_data = &mem_bv;
+	io_req.mem_idx = 0;
+	io_req.n_bits = STR_CHECK_LEN * 8;
+	io_req.big_endian = false;
+	RzAbsIntIOReadResult read_res = ctx->inst->config.io_read(&io_req, ctx->inst->config.cb_user);
+	if (read_res == RZ_ABSINT_IO_READ_RESULT_BREAK) {
+		rz_bv_fini(&addr_bv);
+		rz_bv_fini(&mem_bv);
+		return EVAL_RESULT_BREAK;
+	}
+	if (read_res == RZ_ABSINT_IO_READ_RESULT_OK) {
+		ut8 buf[STR_CHECK_LEN];
+		rz_bv_set_to_bytes_le(&mem_bv, buf);
+
+		RzStrEnc enc = rz_str_guess_encoding_from_buffer(buf, STR_CHECK_LEN);
+		RzUtilStrScanOptions opt = { 0 };
+		opt.min_str_length = 4;
+		opt.max_str_length = STR_CHECK_LEN;
+		opt.check_ascii_freq = true;
+		opt.max_matches = 1;
+
+		RzDetectedString *det = NULL;
+		if (rz_scan_strings_single_at_start_raw(buf, STR_CHECK_LEN, &opt, enc, &det) && det &&
+			(ctx->res_dimen & RZ_ABSINT_RESULT_DIMEN_COMMENTS)) {
+			RzStrBuf sb;
+			rz_strbuf_init(&sb);
+			rz_strbuf_appendf(&sb, "str: \"%s\"", det->string);
+			char *cmt = rz_strbuf_drain_nofree(&sb);
+			interp_add_comment(ctx, ctx->insn_addr, cmt);
+			free(cmt);
+		}
+		if (det) {
+			rz_detected_string_free(det);
+		}
+	}
+
+	rz_bv_fini(&addr_bv);
+	rz_bv_fini(&mem_bv);
+	return EVAL_RESULT_OK;
+}
 static EvalResult eval_pure(RzAbsIntRunContext *ctx, const RzILOpPure *pure, RZ_OUT RzAbsIntVal *out) {
 #define EVAL_SUB_OR_RETURN_CLEANUP(op, out, cleanup) \
 	do { \
@@ -559,16 +621,17 @@ static EvalResult eval_pure(RzAbsIntRunContext *ctx, const RzILOpPure *pure, RZ_
 		report_yield_xref(ctx, 0, ctx->insn_addr, out, RZ_ANALYSIS_XREF_TYPE_MEM_READ);
 		size_t n_bits = pure->code == RZ_IL_OP_LOAD ? 8 : pure->op.loadw.n_bits;
 		EvalResult res = load_abstr_data(ctx->inst, mem_idx, &ld_addr, n_bits, out);
-		if (res == EVAL_RESULT_OK && interp_is_analyzing(ctx) && is_pointer_sized_read(ctx, n_bits)) {
-			// Pointer-sized read: `out` now holds the candidate address of a string.
-			// String detection will go here in the next step.
-		}
 		rz_bv_fini(&ld_addr);
 		if (res == EVAL_RESULT_BREAK) {
 			return EVAL_RESULT_BREAK;
 		}
 		if (res != EVAL_RESULT_OK) {
 			goto map_to_top;
+		}
+		if (interp_is_analyzing(ctx) && is_pointer_sized_read(ctx, n_bits)) {
+			if (check_string_at_pointer(ctx, out) == EVAL_RESULT_BREAK) {
+				return EVAL_RESULT_BREAK;
+			}
 		}
 		break;
 	}
