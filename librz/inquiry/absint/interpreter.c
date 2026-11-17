@@ -66,6 +66,7 @@ RZ_API RZ_OWN RzAbsIntInstance *rz_absint_instance_new(RzAnalysis *analysis, RZ_
 		goto err_inst;
 	}
 	inst->arch_name = cur->arch;
+	inst->ptr_bits = rz_analysis_get_address_bits(analysis);
 
 	RzAnalysisILContext *il_ctx = rz_analysis_il_context_resolve(analysis);
 	if (!il_ctx) {
@@ -551,8 +552,11 @@ static EvalResult eval_pure(RzAbsIntRunContext *ctx, const RzILOpPure *pure, RZ_
 			rz_bv_and_inplace(&ld_addr, &mask);
 		}
 
-		report_yield_xref(ctx, 0, ctx->insn_addr, out, RZ_ANALYSIS_XREF_TYPE_MEM_READ);
 		size_t n_bits = pure->code == RZ_IL_OP_LOAD ? 8 : pure->op.loadw.n_bits;
+		// Only reads of pointer size can hold an address of a string.
+		if (n_bits == (size_t)ctx->inst->ptr_bits) {
+			report_yield_xref(ctx, 0, ctx->insn_addr, out, RZ_ANALYSIS_XREF_TYPE_MEM_READ);
+		}
 		EvalResult res = load_abstr_data(ctx->inst, mem_idx, &ld_addr, n_bits, out);
 		rz_bv_fini(&ld_addr);
 		if (res == EVAL_RESULT_BREAK) {

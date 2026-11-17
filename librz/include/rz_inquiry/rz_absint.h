@@ -195,6 +195,7 @@ struct rz_absint_instance_t {
 	RzAnalysisILContext *il_ctx; ///< Context about available global vars and memory
 	HtUP *var_name_hashes; ///< Map of DJB2 hashes to variable names.
 	RZ_DEPRECATE const char *arch_name; ///< Name of architecture. Used only by work-arounds until we have RzArch.
+	int ptr_bits; ///< Width of an address/pointer in bits, from rz_analysis_get_address_bits()
 };
 
 RZ_API RZ_OWN RzAbsIntInstance *rz_absint_instance_new(RzAnalysis *analysis, RZ_NONNULL RZ_BORROW const RzAbsIntConfig *config);
